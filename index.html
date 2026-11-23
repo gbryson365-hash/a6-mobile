@@ -553,7 +553,7 @@ async function bakTake(id, why){
   if (!vs.length) return 0;
   try { const d = await db.doc('orders/' + id).get(); o = d.exists ? d.data() : null; } catch (e) {}
   const at = Date.now();
-  try { await db.doc('baks/' + id + '_' + at).set({ oid: id, at, why: String(why || ''), dest: o ? o.dest || '' : '', date: o ? o.date || '' : '', order: o, vals: vs }); } catch (e) { return 0; }
+  try { await db.doc('baks/' + id + '_' + at).set({ oid: id, at, why: String(why || ''), dest: o ? o.dest || '' : '', date: o ? o.date || '' : '', order: o, vals: vs }); } catch (e) { return -1; }   // -1：バックアップを取れなかった（消すのをやめる）
   bakPrune(); return vs.length;
 }
 async function bakPrune(){ try { const lim = Date.now() - BAK_DAYS * 864e5; const ds = (await db.collection('baks').get()).docs; for (const d of ds) { const b = d.data() || {}; if (!(Number(b.at) > lim)) await db.doc('baks/' + d.id).delete(); } } catch (e) {} }
@@ -570,13 +570,16 @@ function bakDone(b){
 }
 async function bakShow(all){
   bakAll = !!all;
-  const bs0 = await bakList(), other = bs0.filter(b => b.oid !== oid).length;
+  const bs0 = await bakList(), live = new Set((meta && Array.isArray(meta.list) ? meta.list : []).map(x => x.oid));
+  const gone = bs0.filter(b => !live.has(b.oid)), other = bs0.filter(b => b.oid !== oid && live.has(b.oid)).length;   // gone：消した発注書の分（選べないので、いつも下に出す）
   const bs = bakAll || !oid ? bs0 : bs0.filter(b => b.oid === oid);
   const cur = order ? (order.dest || '') + ' ' + (order.date || '') : '';
   const head = (!bakAll && oid ? '<div class="bkn">「' + esc(cur) + '」のバックアップ</div>' : '');
-  const more = oid && other ? '<button type="button" class="btn sub" id="bakMore" style="width:100%;margin-top:6px">' + (bakAll ? 'いまの発注書だけ表示' : 'ほかの発注書も表示（' + other + ' 件・消した発注書もここ）') + '</button>' : '';
+  const row = b => '<div class="bk"><div><b>' + esc(hm(b.at)) + '</b>　' + esc(b.why || '') + '<br>' + esc((b.dest || '') + ' ' + (b.date || '')) + '　' + bakDone(b) + '</div><button type="button" class="btn sub" data-id="' + esc(b.id) + '">戻す</button></div>';
+  const goneH = !bakAll && oid && gone.length ? '<div class="bkn" style="margin-top:10px">消した発注書のバックアップ</div>' + gone.map(row).join('') : '';
+  const more = oid && other ? '<button type="button" class="btn sub" id="bakMore" style="width:100%;margin-top:6px">' + (bakAll ? 'いまの発注書だけ表示' : 'ほかの発注書も表示（' + other + ' 件）') + '</button>' : '';
   $('bakList').innerHTML = head + (bs.length ? bs.map(b => '<div class="bk"><div><b>' + esc(hm(b.at)) + '</b>　' + esc(b.why || '') + '<br>' + esc((b.dest || '') + ' ' + (b.date || '')) + '　' + bakDone(b) + '</div><button type="button" class="btn sub" data-id="' + esc(b.id) + '">戻す</button></div>').join('')
-    : '<div class="empty">バックアップはありません（消す・置き換える前に自動で取り、' + BAK_DAYS + '日分残します）。</div>') + more;
+    : '<div class="empty">バックアップはありません（消す・置き換える前に自動で取り、' + BAK_DAYS + '日分残します）。</div>') + goneH + more;
   const mb = $('bakMore'); if (mb) mb.onclick = () => bakShow(!bakAll);
   $('bakBox').hidden = false;
 }
@@ -596,19 +599,24 @@ async function bakRestore(bid){
     $('bakBox').hidden = true; clrTop(); pickOrder(id); say('バックアップ（' + hm(b.at) + '）から ' + (b.vals || []).length + ' 行を戻しました。', true);
   } catch (e) { say('戻せませんでした。もう一度押してください。'); }
 }
-async function delOrder(id, why){   // 発注書と、入れた箱番・重量（v）を消す（消す前にバックアップ）
-  await bakTake(id, why || '削除');
+async function delOrder(id, why){   // 発注書と、入れた箱番・重量（v）を消す（消す前にバックアップ。取れなかったら消さない）。戻り値：バックアップした行数
+  const n = await bakTake(id, why || '削除');
+  if (n < 0) throw new Error('バックアップを取れませんでした');
   try { const vs = await db.collection('orders/' + id + '/v').get(); await inBatches(vs.docs, d => db.doc('orders/' + id + '/v/' + d.id).delete()); } catch (e) {}
   await db.doc('orders/' + id).delete();
   try { await db.doc('outs/' + id).delete(); } catch (e) {}
+  return n;
 }
 async function delOrders(ids, extra, why){   // まとめて消して、一覧（meta/cur）から外す
-  if (!db || !ids.length) return;
-  for (const id of ids) { try { await delOrder(id, why); } catch (e) {} }
+  if (!db || !ids.length) return { n: 0, done: [] };
+  let n = 0; const done = [];
+  for (const id of ids) { try { n += await delOrder(id, why); done.push(id); } catch (e) {} }   // バックアップを取れなかった発注書は消さない（一覧にも残す）
+  ids = done;
   const list = (meta && Array.isArray(meta.list) ? meta.list : []).filter(x => !ids.includes(x.oid));
   const top = list.length ? list[0].oid : '';
   await db.doc('meta/cur').set(Object.assign({}, meta || {}, extra || {}, { oid: top, list }));
   if (ids.includes(oid)) pickOrder(top);
+  return { n, done };
 }
 $('delBtn').onclick = () => {
   if (!order) { say('消す発注書を選んでください。'); return; }
@@ -619,7 +627,15 @@ $('bakBtn').onclick = () => { if (!$('bakBox').hidden) { $('bakBox').hidden = tr
 $('bakClose').onclick = () => { $('bakBox').hidden = true; };
 $('bakList').addEventListener('click', e => { const b = e.target.closest('button[data-id]'); if (b) bakRestore(b.dataset.id); });
 $('delNo').onclick = () => { $('delAsk').hidden = true; };
-$('delYes').onclick = async () => { $('delAsk').hidden = true; const id = oid; try { await delOrders([id]); say('発注書を消しました。', true); } catch (e) { say('消せませんでした。もう一度押してください。'); } };
+$('delYes').onclick = async () => {
+  $('delAsk').hidden = true; const id = oid, nm = order ? (order.dest || '') + ' ' + (order.date || '') : '';
+  const put = (cls, t) => { const m = $('topMsg'); m.className = 'msg' + (cls ? ' ' + cls : ''); m.textContent = t; };
+  try {
+    const r = await delOrders([id]), still = !r.done.includes(id);
+    if (still) put('warn', 'バックアップを取れなかったので、「' + nm + '」は消していません。電波を確かめて、もう一度押してください。');
+    else put('ok', '「' + nm + '」を消しました。' + (r.n ? '入力 ' + r.n + ' 行はバックアップに残しました（「バックアップ」の「消した発注書」から戻せます）。' : '入力がなかったので、バックアップはありません。'));
+  } catch (e) { put('', '消せませんでした。もう一度押してください。'); }
+};
 // 自動で消す時刻（PC の保存データの「毎日 ◯時にすべて削除」と同じ。PC から送るときに一緒に届く）
 function lastClr(){   // 直近の削除の時刻（今より前で一番新しいもの）
   const t = meta && meta.clr; if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return 0;
