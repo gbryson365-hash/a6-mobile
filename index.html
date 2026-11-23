@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A6 スマホ入力（新）</title>
+<link rel="apple-touch-icon" href="icon.png">
+<meta name="apple-mobile-web-app-title" content="A6入力">
+<script src="supabase.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,800&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: 作業場の道具。はっきり、速く、間違えない
+   IDEA: A6の札とA4の表（番号で呼び出し、表で全体を見る）
+   PICTURE: 大きな番号の表示と計算機のキー
+   COLOUR and TYPE: 白・黒・赤（未入力）、番号は Archivo の太字、文字は Noto Sans JP
+   LAYOUT: 1列。上に呼び出し、下に一覧と絞り込み、最後に PC との受け渡し */
+:root{color-scheme:light dark;--bg:light-dark(#fff,#0e0e0e);--ink:light-dark(#111,#f2f2f2);--sub:light-dark(#666,#a8a8a8);--line:light-dark(#d6d6d6,#333);--soft:light-dark(#f3f3f3,#1b1b1b);--red:#e4002b;--ok:light-dark(#0b7a3b,#4cc27e);--key:light-dark(#fff,#1d1d1d)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Noto Sans JP","Yu Gothic UI",sans-serif;overflow-x:clip}
+.num{font-family:Archivo,"Noto Sans JP",sans-serif;font-stretch:112%;font-weight:800;font-variant-numeric:tabular-nums}
+.wrap{max-width:560px;margin:0 auto;padding:12px 12px 40px}
+header{display:flex;align-items:baseline;gap:10px;border-top:6px solid var(--ink);padding-top:8px}
+header h1{font-size:22px;line-height:1.1;margin:0;font-weight:700}
+header .date{color:var(--sub);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prog{margin-left:auto;font-size:15px}
+.bar{height:6px;background:var(--soft);margin:8px 0 12px}.bar i{display:block;height:100%;background:var(--ink);width:0}
+select,input,textarea,button{font:inherit;color:inherit}
+select{height:40px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:0 8px;max-width:100%}
+.call{border:2px solid var(--ink);border-radius:10px;padding:8px 10px;position:relative}
+.lock{position:absolute;top:6px;right:6px;min-width:40px;height:40px;display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:20px;line-height:1;padding:0;z-index:2}.lock svg{width:22px;height:22px}.lock.on{border:2px solid var(--ink);color:var(--ink)}.lock:not(.on){border:2px solid var(--red);background:var(--red);color:#fff}   /* 外しているときは赤地に開いた鍵（文字は出さない：品名の幅を変えないため） */
+.card .head,.disp{padding-right:44px}.fld.lk{background:var(--soft)}.fld.lk small::after{content:'　🔒'}
+.disp{display:flex;align-items:center;gap:10px}
+.disp .lab{font-size:13px;color:var(--sub);width:4.5em}
+.disp .val{flex:1;text-align:right;font-size:44px;line-height:1.1;min-height:50px;overflow:hidden;white-space:nowrap}
+.card{display:none;margin-top:0}.card.on{display:flex;flex-direction:column;flex:1}.card.on .head{flex:1}   /* 空いた場所は品名・規格の下に（箱番の欄・ボタンはキーのすぐ上） */
+.card .head{display:flex;gap:10px;align-items:flex-start}.brow{display:flex;align-items:center;gap:8px;margin-top:6px;height:38px}.brow .boxes{margin-top:0}   /* 最後の箱と「番号に戻る」を同じ行に */.card .abtn{flex:none;height:36px;padding:0 10px;border:2px solid var(--line);border-radius:18px;background:var(--bg);color:var(--sub);font-size:14px;font-weight:700}.card .abtn.on{border-color:#1d5fd1;background:#1d5fd1;color:#fff}
+.fld b.auto{color:#1d5fd1}.fld b.auto::after{content:'自動';font-size:12px;font-weight:700;margin-left:6px;vertical-align:middle;border:1px solid #1d5fd1;border-radius:4px;padding:0 4px}
+.card .qbtn{margin-left:auto;flex:none;height:36px;padding:0 12px;border:2px solid var(--ink);border-radius:18px;background:var(--bg);font-size:15px;font-weight:700}.card .qbtn[hidden]{display:none}.card .qbtn:not([hidden])+.back{margin-left:0}
+.card .back{margin-left:auto;flex:none;height:36px;padding:0 10px;border:1px solid var(--line);border-radius:18px;background:var(--bg);font-size:13px}
+.card .no{font-size:52px;line-height:.95;flex:none;white-space:nowrap;letter-spacing:-1px}.card .head>div{flex:1;min-width:0;overflow-wrap:anywhere}   /* 番号（3桁まで）は縮めない。品名は右の残りで折り返す */
+.card .it{font-size:21px;font-weight:700;line-height:1.25;margin:2px 0 4px}
+.card .sp{font-size:15px;color:var(--sub);line-height:1.4}#cSpec{max-height:5.6em;overflow-y:auto}   /* 規格がとても長いときは、5行分を超えたら中で送る */
+.card .qty{font-size:18px;white-space:nowrap}.card .head>div.nq{flex:none;display:flex;flex-direction:column;align-items:center}.card .nq .qty{display:flex;flex-direction:column;align-items:center;margin-top:6px;line-height:1}.card .nq .qn{font-size:34px;font-weight:700}.card .nq .qu{font-size:18px;font-weight:700;margin-top:3px}   /* 数量は番号の下（枠を低くする） */
+.fields{display:grid;grid-template-columns:1fr 1.4fr;gap:8px;margin-top:8px}
+.fld{border:1px solid var(--line);border-radius:8px;padding:4px 10px;text-align:right;cursor:pointer;min-height:56px}
+.fld small{display:block;text-align:left;font-size:12px;color:var(--sub)}
+.fld b{display:block;font-size:28px;line-height:32px;height:32px;white-space:nowrap;overflow:hidden}
+.fld.on{border:3px solid var(--red);padding:4px 8px}
+.boxes{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.boxes{align-items:center}.boxes .lbl{font-size:13px;color:var(--sub)}.boxes button{min-width:56px;height:36px;border:2px solid var(--ink);border-radius:18px;background:var(--bg);font-size:20px;font-weight:700}.boxes button.ro{cursor:default}
+.keys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:8px}.keys button[data-k="C"]{grid-row:span 2;height:auto}.keys button[data-k="."]{grid-column:span 2;font-size:34px;font-weight:700}.keys button[data-k="BK"]{font-size:20px;font-weight:700}.keys button[data-k="C"]{font-size:28px;font-weight:700}.keys.nb button[data-k="BK"]{opacity:.35}
+.keys button{height:56px;border:1px solid var(--line);border-radius:8px;background:var(--key);font-size:24px}
+.call,.call *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}   /* 計算機は押したかどうかだけ（長押しで文字を選ばない） */
+.keys button[data-k="⌫"]{font-size:34px}
+.keys button.go{background:var(--ink);color:var(--bg);font-size:18px;font-weight:700}.keys button.go.dirty{background:var(--red);border-color:var(--red)}.msg.dirty{font-weight:700}
+.stask{display:grid;grid-template-columns:1fr 1.15fr .8fr .8fr;gap:6px;margin-top:6px}.stask button{height:44px;padding:0 2px;border:2px solid var(--ink);border-radius:8px;background:var(--bg);font-size:15px;font-weight:700;white-space:nowrap}.stask button.cx{border-color:var(--line);color:var(--sub);font-weight:400}.fld.lp{background:#fff3c4}   /* 箱番の長押し：出荷なし */
+.call .msg{min-height:48px;line-height:1.35;margin-top:4px}   /* メッセージは2行分の場所をいつも取っておく（出ても枠が伸びない） */
+.keys button:active{transform:scale(.97)}
+.msg{min-height:22px;font-size:14px;color:var(--red);margin-top:6px}
+.msg.ok{color:var(--ok)}
+h2{font-size:18px;margin:22px 0 8px;border-top:2px solid var(--ink);padding-top:8px}
+.filters{display:flex;flex-wrap:nowrap;gap:6px;align-items:center}.filters .seg{flex:none}#fItem{flex:1 1 0;min-width:0;width:0;text-overflow:ellipsis}   /* すべて・未入力と品名はいつも1行（品名は残りの幅） */
+.seg{display:flex}.seg button{height:40px;padding:0 12px;border:1px solid var(--line);background:var(--bg)}
+.seg button:first-child{border-radius:6px 0 0 6px}.seg button:last-child{border-radius:0 6px 6px 0}.seg button+button{margin-left:-1px}
+.seg button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+#fKb{flex-wrap:nowrap}#fKb button{min-width:0;flex:1 1 0;padding:0 4px;white-space:nowrap}#fKb button:first-child{flex:0 0 auto;padding:0 8px}   /* 区分は1行に収める */
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
+th{font-size:12px;color:var(--sub);font-weight:400;text-align:left;border-bottom:2px solid var(--ink);padding:4px 3px}
+td{border-bottom:1px solid var(--line);padding:6px 3px;vertical-align:top}
+td.n{font-size:18px;width:2.4em}
+td.bx,td.w{text-align:right;white-space:nowrap;width:3.6em;font-size:16px}
+td.w{width:4.4em}
+td .s{display:block;font-size:12px;color:var(--sub)}
+td.q{white-space:nowrap;text-align:right;width:4.6em}
+tr.blank td.bx,tr.blank td.w{color:var(--red)}
+tr{cursor:pointer}
+tr.cur td{background:var(--soft)}
+.sum{display:grid;gap:4px;margin-top:8px}
+.sum div{display:flex;gap:8px;border-bottom:1px solid var(--line);padding:6px 0;cursor:pointer}
+.sum div span:first-child{flex:1}.sum .c{color:var(--sub);white-space:nowrap}
+.empty{color:var(--sub);padding:16px 0}
+.trow{flex-wrap:nowrap}.trow .btn{padding:0 10px;font-size:14px;white-space:nowrap}   /* 取込用にコピー・削除・バックアップは1行 */
+.bak{border:2px solid var(--ink);border-radius:8px;padding:8px 10px;margin-top:8px}.bkh{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}.bk{display:flex;align-items:center;gap:8px;justify-content:space-between;border-top:1px solid var(--line);padding:6px 0;font-size:14px}.msg.warn{color:var(--red);font-weight:700}.bkd{background:#fff4d6;color:#7a5300;border-radius:4px;padding:0 4px;font-weight:700}.bkd.ok{background:#e3f4e6;color:#1d6b33}.bkn{font-size:13px;color:var(--sub,#555);margin-bottom:4px}
+.confirm{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;border:2px solid var(--red);border-radius:8px;padding:8px 10px}.confirm span{flex:1 1 100%;font-weight:700}.confirm .btn{background:var(--red);border-color:var(--red)}.confirm .btn.sub{background:var(--bg);color:var(--ink);border-color:var(--line)}
+.boxf{flex-wrap:wrap;margin-top:6px}.boxf button{min-width:48px}
+.donemsg{margin-top:8px;border:2px solid currentColor;border-radius:8px;padding:8px 10px;font-size:17px;font-weight:700;text-align:center}.donemsg.all{color:#1d5fd1;background:#eaf1fd}.donemsg.box{color:#0f7a4a;background:#e7f6ee}
+.boxinfo{margin-top:8px;border:2px solid var(--ink);border-radius:8px;padding:8px 10px}.boxinfo .bn{font-size:28px;line-height:1}.boxinfo .cs{font-size:17px;font-weight:700;margin-top:4px;overflow-wrap:anywhere}.boxinfo .ct{font-size:13px;color:var(--sub)}
+td.bx.st{font-size:12px;color:var(--sub);font-weight:700;white-space:normal}.fld b.st{font-size:20px;color:var(--sub)}
+#bsum div{align-items:baseline}#bsum .bw2{min-width:4.2em;text-align:right;font-weight:700;color:var(--ink)}#bsum .bw2 small{font-weight:400;font-size:11px;color:var(--red);margin-left:2px}.boxinfo .bw{font-size:20px;font-weight:700;margin-top:4px}#bsum .bn{font-size:20px;width:2.2em;flex:none}#bsum .cs{flex:1;overflow-wrap:anywhere}
+details{margin-top:24px;border-top:2px solid var(--ink);padding-top:8px}
+summary{font-weight:700;cursor:pointer;min-height:44px;display:flex;align-items:center}
+textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:14px;background:var(--bg)}
+.btn{height:44px;padding:0 16px;border:1px solid var(--ink);border-radius:8px;background:var(--ink);color:var(--bg);font-weight:700}
+.btn.sub{background:var(--bg);color:var(--ink)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.note{font-size:13px;color:var(--sub)}
+@media(prefers-reduced-motion:reduce){.keys button:active{transform:none}}
+#fSt button{touch-action:manipulation}
+.osel{margin:0 0 8px}.osel select{width:100%}   /* 発注書の選択はいちばん上 */
+#login{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px}
+#login .lg{width:100%;max-width:360px;border-top:6px solid var(--ink);padding-top:10px}
+#login h2{font-size:22px;margin:0 0 12px}#login label{display:block;margin:10px 0 4px;color:var(--sub);font-size:14px}
+#login input{width:100%;height:46px;font-size:16px;border:1px solid var(--line);border-radius:6px;padding:0 10px;background:var(--bg)}
+#login button{width:100%;height:48px;margin-top:16px;border:0;border-radius:8px;background:var(--ink);color:var(--bg);font-weight:700;font-size:16px}
+#login .msg{margin-top:10px;min-height:1.5em}.sbout{margin-top:24px;text-align:center}.sbout button{border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:6px 12px;font-size:13px;color:var(--sub)}
+</style>
+</head>
+<body>
+<div id="login" hidden><div class="lg"><h2>A6 スマホ入力（新）</h2><div class="hint">ログインしてください（一度ログインすれば、次からは要りません）。</div>
+<label for="lgMail">メールアドレス</label><input id="lgMail" type="email" autocomplete="username" inputmode="email">
+<label for="lgPw">パスワード</label><input id="lgPw" type="password" autocomplete="current-password">
+<button type="button" id="lgGo">ログイン</button><div class="msg" id="lgMsg"></div></div></div>
+<div class="wrap">
+  <div class="row osel"><select id="ordSel" aria-label="発注書"></select></div>
+  <header><h1 id="ttl">スマホ入力<small style="font-size:13px;color:var(--sub)">（新）</small></h1><span class="date" id="dt"></span><span class="prog num" id="prog"></span></header>
+  <div class="bar"><i id="barI"></i></div>
+  <div class="row trow" style="margin-top:0"><button type="button" class="btn sub" id="outBtn2" title="PC で押します。スマホで入れた箱番・重量をコピーして、アプリの「スマホ入力を取り込む」で取り込みます">取込用にコピー</button><button type="button" class="btn sub" id="delBtn" title="この発注書と、入れた箱番・重量を消します">削除</button><button type="button" class="btn sub" id="bakBtn" title="消した・置き換えた箱番・重量を戻します（3日分）">バックアップ</button></div>
+  <div class="bak" id="bakBox" hidden><div class="bkh"><b>バックアップから戻す</b><button type="button" class="btn sub" id="bakClose">閉じる</button></div><div id="bakList"></div></div>
+  <div class="confirm" id="delAsk" hidden><span id="delTxt"></span><button type="button" class="btn" id="delYes">削除する</button><button type="button" class="btn sub" id="delNo">やめる</button></div>
+  <div class="msg" id="topMsg"></div>
+  <textarea id="outBox2" readonly hidden></textarea>
+
+  <div class="call" id="call" style="margin-top:10px">
+    <button type="button" class="lock" id="lockBtn" title="入力値のロック：ふだんはかかっています（入っている箱番・重量は変えられません）。間違いを直すときだけ押して外し、直したらもう一度押してください" aria-label="入力値をロック">🔓</button>
+    <div id="topArea" style="display:flex;flex-direction:column">
+    <div class="disp" id="numDisp"><span class="lab">札の番号</span><span class="val num" id="numVal"></span></div>
+    <div class="card" id="card">
+      <div class="head"><div class="nq"><span class="no num" id="cNo"></span><span class="qty" id="cQty"></span></div><div><div class="sp" id="cShop"></div><div class="it" id="cItem"></div><div class="sp" id="cSpec"></div></div></div>
+      <div class="fields">
+        <div class="fld" id="fB" data-f="b"><small>箱番</small><b class="num" id="vB"></b></div>
+        <div class="fld" id="fW" data-f="w"><small>重量（実数）</small><b class="num" id="vW"></b></div>
+      </div>
+      <div class="stask" id="stAsk" hidden><button type="button" data-st="次回納品">次回納品</button><button type="button" data-st="キャンセル">キャンセル</button><button type="button" data-st="欠品">欠品</button><button type="button" class="cx" data-st="">やめる</button></div>
+      <div class="confirm" id="wAsk" hidden><span id="wTxt"></span><button type="button" class="btn sub" id="wNo">直す</button><button type="button" class="btn" id="wYes">このまま保存</button></div>
+      <div class="brow"><div class="boxes" id="boxes"></div><button type="button" class="abtn" id="autoBtn" title="オンにすると、ロック中に箱番が空いている札を呼んだとき、いまの箱番（いちばん大きい箱番、なければ 1）を自動で入れて、重量の欄から始めます">自動箱番</button><button type="button" class="qbtn" id="qtyBtn" title="発注数をそのまま重量（実数）に入れます（保存は「保存」ボタン）">発注数</button></div>
+    </div>
+    </div>
+    <div class="keys" id="keys"></div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <h2>一覧</h2>
+  <div class="filters">
+    <div class="seg" id="fSt"><button data-v="all" class="on">すべて</button><button data-v="blank">未入力</button></div>
+    <select id="fItem" aria-label="品名で絞り込み"><option value="">品名：すべて</option></select>
+  </div>
+  <div class="seg boxf" id="fKb" aria-label="区分で絞り込み" hidden></div>
+  <div class="seg boxf" id="fBox" aria-label="箱番で絞り込み"></div>
+  <div class="boxinfo" id="boxInfo" hidden></div>
+  <div class="donemsg" id="doneMsg" hidden></div>
+  <table><thead><tr><th>No</th><th>品名・規格・店</th><th style="text-align:right">数量</th><th style="text-align:right">箱</th><th style="text-align:right">重量</th></tr></thead><tbody id="tb"></tbody></table>
+  <div class="empty" id="emp" hidden>この絞り込みに入る行はありません。</div>
+
+  <h2>箱ごと</h2>
+  <div class="sum" id="bsum"></div>
+
+  <h2>品名ごと</h2>
+  <div class="sum" id="sum"></div>
+
+  <details id="pc">
+    <summary>PC との受け渡し</summary>
+    <p class="note">1. アプリの保存データで「スマホを開く」を押すと、このページが開きます。そのまま Ctrl＋V を押してください（ページのどこでも大丈夫です。下の枠に貼り付けても同じです）。</p>
+    <textarea id="inBox" placeholder="ここに貼り付け"></textarea>
+    <div class="msg" id="inMsg"></div>
+    <p class="note">発注書は、PC の保存データと同じ時刻（毎日）に自動で消えます。PC の保存データで消した発注書は、次に「スマホを開く」で貼り付けたときに、ここからも消えます。</p>
+    <p class="note">2. スマホで入力し終わったら、PC でこのページの上の「取込用にコピー」を押し、アプリの保存データで「スマホ入力を取り込む」を押してください。</p>
+    <div class="row"><button class="btn" id="outBtn">取込用にコピー</button><span class="msg" id="outMsg" style="margin:0"></span></div>
+    <textarea id="outBox" readonly hidden></textarea>
+  </details>
+</div>
+<script>
+/* Supabase 版スマホ入力：データの置き場所（Claude のページの db と同じ使い方ができるようにする）
+   今のページのプログラムは db.doc(パス).get/set/delete/onSnapshot と db.collection(パス).get/onSnapshot だけを使う。
+   それを Supabase の docs 表（path・parent・data）に置き換える。見張り（onSnapshot）は、変わったら読み直す形。 */
+const SB_URL = 'https://uqwgphjetltdyvighxyf.supabase.co';
+const SB_KEY = 'sb_publishable_d2aOJZVtqgkwVD0lWh7t7A_wQzeYVN8';   // 公開してよい鍵（ログインしないとデータは読めない）
+let SB = null;
+function sbMakeDb(sb){
+  const parentOf = p => p.split('/').slice(0, -1).join('/');
+  const idOf = p => p.split('/').pop();
+  const copy = d => d == null ? d : JSON.parse(JSON.stringify(d));
+  const snap = (path, row) => ({ id: idOf(path), exists: !!row, data: () => row ? copy(row.data) : undefined, metadata: { fromCache: false } });
+  const chk = r => { if (r.error) throw r.error; return r.data; };
+  // 変わったら、その所を見ている見張りだけを読み直す（何度も続けて変わったら 80ms まとめて1回）
+  const watchers = new Set();
+  const kickAll = p => watchers.forEach(w => { if (w.match(p)) w.kick(); });
+  sb.channel('a6docs').on('postgres_changes', { event: '*', schema: 'public', table: 'docs' }, pl => {
+    const p = (pl.new && pl.new.path) || (pl.old && pl.old.path); if (p) kickAll(p); else watchers.forEach(w => w.kick());
+  }).subscribe(st => { if (st === 'SUBSCRIBED') watchers.forEach(w => w.kick()); });   // つながり直したら読み直す
+  const watch = (match, load, next, err) => {
+    let t = null, live = true, busy = false, again = false;
+    const run = async () => {
+      if (!live) return; if (busy) { again = true; return; } busy = true;
+      try { const s = await load(); if (live) next(s); } catch (e) { if (live && err) err(e); }
+      busy = false; if (again) { again = false; run(); }
+    };
+    const w = { match, kick: () => { clearTimeout(t); t = setTimeout(run, 80); } };
+    watchers.add(w); run();
+    return () => { live = false; clearTimeout(t); watchers.delete(w); };
+  };
+  const docRef = path => ({ id: idOf(path), path,
+    async get(){ const rows = chk(await sb.from('docs').select('path,data').eq('path', path).limit(1)); return snap(path, rows[0]); },
+    async set(o){ chk(await sb.from('docs').upsert({ path, parent: parentOf(path), data: copy(o), updated_at: new Date().toISOString() })); kickAll(path); },
+    async delete(){ chk(await sb.from('docs').delete().eq('path', path)); kickAll(path); },
+    onSnapshot(next, err){ return watch(p => p === path, () => this.get(), next, err); } });
+  const colRef = path => ({ path, doc: id => docRef(path + '/' + id),
+    async get(){
+      const out = []; let from = 0;
+      for (;;) { const rows = chk(await sb.from('docs').select('path,data').eq('parent', path).range(from, from + 999)); out.push(...rows); if (rows.length < 1000) break; from += 1000; }
+      const docs = out.map(r => snap(r.path, r)); return { docs, size: docs.length, empty: !docs.length };
+    },
+    onSnapshot(next, err){ return watch(p => parentOf(p) === path, () => this.get(), next, err); } });
+  return { doc: docRef, collection: colRef };
+}
+// ログイン：前にログインしていればそのまま。まだなら、ログインの画面を出して待つ
+async function sbLogin(){
+  if (!window.supabase || !supabase.createClient) { const m = document.getElementById('lgMsg'); if (m) m.textContent = '読み込みに失敗しました。電波を確かめて、ページを開き直してください。'; return null; }
+  SB = supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
+  let ses = null; try { ses = (await SB.auth.getSession()).data.session; } catch (e) {}
+  if (!ses) ses = await new Promise(res => {
+    const box = document.getElementById('login'), msg = document.getElementById('lgMsg'), btn = document.getElementById('lgGo');
+    box.hidden = false;
+    const go = async () => {
+      const em = document.getElementById('lgMail').value.trim(), pw = document.getElementById('lgPw').value;
+      if (!em || !pw) { msg.textContent = 'メールアドレスとパスワードを入れてください。'; return; }
+      btn.disabled = true; msg.textContent = 'ログインしています…';
+      try {
+        const r = await SB.auth.signInWithPassword({ email: em, password: pw });
+        if (r.error || !r.data.session) { msg.textContent = 'ログインできませんでした。メールアドレスとパスワードを確かめてください。'; btn.disabled = false; return; }
+        box.hidden = true; res(r.data.session);
+      } catch (e) { msg.textContent = 'つながりませんでした。電波を確かめて、もう一度押してください。'; btn.disabled = false; }
+    };
+    btn.onclick = go; document.getElementById('lgPw').onkeydown = e => { if (e.key === 'Enter') go(); };
+  });
+  return sbMakeDb(SB);
+}
+async function sbLogout(){ try { await SB.auth.signOut(); } catch (e) {} location.reload(); }
+
+</script>
+<script>
+{
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+let db = null, unsubO = null, unsubV = null, order = null, vals = {}, oid = '', meta = null;
+let mode = 'num', numBuf = '', curR = null, fld = 'b', bufB = '', bufW = '', stF = 'all', itemF = '', kbF = '*', boxF = '*', fresh = false, lastTop;   // boxF：'*'＝すべての箱、''＝箱番なし、ほか＝その箱
+const rowsOf = () => order && Array.isArray(order.rows) ? order.rows : [];
+const valOf = r => { const v = vals[String(r.r)]; return { b: v && v.b != null ? String(v.b) : (r.b0 != null ? String(r.b0) : ''), w: v && v.w != null ? String(v.w) : (r.w0 != null ? String(r.w0) : '') }; };
+const isSt = b => b !== '' && !/^\d+(\.\d+)?$/.test(String(b).trim());   // 箱番が文字（次回納品・キャンセル・欠品など）＝入れなくてよい行
+const isDone = r => { const v = valOf(r); return isSt(v.b) || (v.b !== '' && v.w !== ''); };   // 文字の箱番の行は「未入力」にしない
+const fmtQ = r => (r.qty == null ? '' : r.qty) + ' ' + (r.unit || '');
+// 札を開いた時の値から箱番・重量が変わっていたら（自動の箱番・発注数も）、0 の下に赤で「まだ保存されていません」、保存ボタンも赤く。
+//  ほかの赤いメッセージ（エラー）が出ているときはそちらを優先
+function dirtyShow(){
+  const m = $('msg'), card = mode === 'card' && curR;
+  let d = false; if (card) { const o = valOf(curR); d = (!isLk(curR, 'b') && bufB.trim() !== o.b) || (!isLk(curR, 'w') && calc(bufW).trim() !== o.w); }
+  $('goKey').classList.toggle('dirty', !!d);
+  const err = m.textContent && !m.classList.contains('ok') && !m.classList.contains('dirty');
+  if (d && !err) { m.textContent = 'まだ保存されていません'; m.className = 'msg dirty'; }
+  else if (!d && m.classList.contains('dirty')) { m.textContent = ''; m.className = 'msg'; }
+}
+// 発注書のファイル名（PC の保存データの「ファイル名|シート名」から。.xls などは外す）
+const fname = src => String(src || '').split('|')[0].replace(/\.(xlsx|xlsm|xls|csv)$/i, '').trim();
+function say(t, ok){ const m = $('msg'); m.textContent = t || ''; m.className = 'msg' + (ok ? ' ok' : ''); }
+function calc(s){ s = String(s); if (!s.includes('+')) return s; const p = s.split('+').filter(x => x !== '').map(Number); if (p.some(isNaN)) return s; return String(Math.round(p.reduce((a, b) => a + b, 0) * 1000) / 1000); }
+
+// ----- キー -----
+const KEYS = ['7', '8', '9', 'BK', '4', '5', '6', 'C', '1', '2', '3', '0', '.', 'OK'];   // BK＝戻る（番号の画面へ）。C は縦 2 つ分、小数点は横 2 つ分（打ち間違いを減らす）
+const KLBL = { BK: '戻る' };
+$('keys').innerHTML = KEYS.map(k => '<button type="button" data-k="' + k + '"' + (k === 'OK' ? ' class="go" id="goKey"' : k === 'BK' ? ' id="bkKey"' : '') + '>' + (KLBL[k] || k) + '</button>').join('');
+$('keys').addEventListener('click', e => { const b = e.target.closest('button'); if (b) key(b.dataset.k); });
+document.addEventListener('keydown', e => { if (e.target.closest('textarea,select,input')) return; const k = e.key === 'Enter' ? 'OK' : e.key === 'Backspace' ? '⌫' : e.key === 'Escape' ? 'C' : e.key; if (KEYS.includes(k) || k === '⌫') { e.preventDefault(); key(k); } });   // PC のキーボードの Backspace は 1 文字消す
+function key(k){
+  if (mode === 'num') {
+    if (/^\d$/.test(k)) { if (numBuf.length < 4) numBuf += k; }
+    else if (k === '⌫') numBuf = numBuf.slice(0, -1);
+    else if (k === 'C') numBuf = '';
+    else if (k === 'OK') { open(numBuf); return; }
+    else if (k === 'BK') return;   // 番号の画面では何もしない
+    say(''); paint(); return;
+  }
+  if (k === 'BK') { goBack(); return; }   // 戻る：保存しないで番号の画面へ
+  $('wAsk').hidden = true;
+  if (k === 'OK' && isLk(curR, 'b') && (isLk(curR, 'w') || isSt(valOf(curR).b))) { goBack(); return; }   // 「戻る」
+  if (isLk(curR, fld) && k !== 'OK') { lkMsg(fld); return; }
+  if (fld === 'b' && k !== 'OK') { if ((autoB || isSt(bufB)) && /^[\d.]$/.test(k)) bufB = ''; autoB = false; }   // 自動の箱番・出荷なしの文字は、数字を打つと置き換わる   // 自動の箱番は、数字を打つと置き換わる
+  let b = fld === 'b' ? bufB : bufW;
+  if (/^\d$/.test(k)) b += k;
+  else if (k === '.') { const last = b.split('+').pop(); if (!last.includes('.')) b += (last === '' ? '0.' : '.'); }
+  else if (k === '⌫') b = b.slice(0, -1);
+  else if (k === 'C') b = '';
+  else if (k === 'OK') {
+    if (fld === 'b' && isSt(b)) { save(); return; }   // 出荷なし（文字）はそのまま保存
+    if (fld === 'b') { bufB = b; if (!isLk(curR, 'b') && !boxOk(curR, b)) return; say(''); fld = 'w'; if (bufW.trim() !== '') { save(); return; } paint(); return; }   // 重量が入っていれば保存（箱番が空でも＝重量だけで登録）
+    bufW = calc(b); save(); return;
+  }
+  if (fld === 'b') bufB = b; else bufW = b;
+  paint();
+}
+// ----- 入力値のロック -----
+//  ふだんはロックがかかっている：入っている（保存した）箱番・重量はすべてロック。空いている欄だけ入れられ、保存するとその値もロックされる。
+//  間違いを直すときだけ 🔒 を押して外す（🔓）→ 直して保存すると自動でロックに戻る（保存しないで戻すときは、もう一度押す）。外した状態は発注書ごとにスマホに覚える
+let lockOn = true;
+const LOCK_ON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2" fill="currentColor"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>';
+const LOCK_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 7.6-1.8"/></svg>';   // 掛け金が開いた鍵
+const lockKey = () => 'a6lock:' + oid;
+function lockLoad(){ lockOn = true; try { lockOn = localStorage.getItem(lockKey()) !== 'off'; } catch (e) {} }
+function lockStore(){ try { if (lockOn) localStorage.removeItem(lockKey()); else localStorage.setItem(lockKey(), 'off'); } catch (e) {} }
+const isLk = (r, f) => !!(lockOn && r && valOf(r)[f] !== '');   // 空いている欄はロックしない
+const lkMsg = f => say((f === 'b' ? '箱番' : '重量') + 'はロックされています（直すときは右上の鍵を押して外してください）。');
+$('lockBtn').onclick = () => {
+  if (!order) { say('発注書を選んでください。'); return; }
+  lockOn = !lockOn; lockStore();
+  say(lockOn ? 'ロックしました。入っている箱番・重量は変えられません。' : 'ロックを外しました。直して「保存」すると、自動でロックに戻ります。', lockOn);
+  if (mode === 'card' && curR && isLk(curR, fld)) { const o = fld === 'b' ? 'w' : 'b'; if (!isLk(curR, o)) fld = o; }
+  paint(); drawList();
+};
+function open(no){
+  const r = rowsOf().find(x => String(x.no) === String(no).replace(/^0+(?=\d)/, ''));
+  if (!r) { say(no ? '番号 ' + no + ' はありません。' : '札の番号を入れてください。'); return; }
+  curR = r; mode = 'card'; qtyW = null; $('wAsk').hidden = true; $('stAsk').hidden = true; const v = valOf(r); bufB = v.b; bufW = v.w; fld = v.b === '' ? 'b' : 'w'; numBuf = '';
+  if (isLk(r, fld)) fld = fld === 'b' ? 'w' : 'b';
+  autoB = false; autoFill(r);
+  say(isLk(r, 'b') && isLk(r, 'w') ? 'この行の箱番・重量はロックされています（直すときは右上の鍵を押して外してください）。' : ''); paint(); drawList(); toCall();
+}
+// 計算機の枠の上辺を、画面のいちばん上に合わせる（すぐに。描き終わってからもう一度合わせて、ずれないように）
+// 計算機の枠の中（数字・欄・ボタン）を押したら、ずれていれば枠を定位置（画面の上）に戻す
+$('call').addEventListener('click', () => { const t = $('call').getBoundingClientRect().top; if (Math.abs(t - 4) > 3) toCall(); }, true);
+window.addEventListener('resize', () => paint());
+function toCall(){ const go = () => { const el = $('call'); const y = el.getBoundingClientRect().top + window.scrollY - 4; window.scrollTo({ top: Math.max(0, y), behavior: 'instant' }); }; go(); requestAnimationFrame(() => { go(); setTimeout(go, 60); }); }
+// ----- 重量の確認（打ち間違い）：PC の「設定」で、取引先・区分ごとに「上限 kg」「規格×発注数との差 ±%」 -----
+//  発注数ボタンで入れた重量、前から入っていて変えていない重量は確かめない
+let qtyW = null;   // 発注数ボタンで入れた値
+function specKg(t){   // 規格から 1 つあたりの重さ（kg）を読む：1.5kg／250g／1.0-1.2kg／800g～1kg。読めなければ null
+  t = String(t || '').normalize('NFKC').toLowerCase().replace(/キロ/g, 'kg').replace(/グラム/g, 'g');
+  t = t.replace(/[a-z]{2,}\d{2,}\./g, ' ');   // 「KM39.280G」のような記号＋番号の「.」は区切り（280g と読む。39.28g ではない）
+  const u = (n, x) => x === 'g' ? n / 1000 : n;
+  let m = t.match(/(\d+(?:\.\d+)?)\s*(kg|g)?\s*[-~〜～]\s*(\d+(?:\.\d+)?)\s*(kg|g)(?![a-z])/);
+  if (m) { const a = u(Number(m[1]), m[2] || m[4]), b = u(Number(m[3]), m[4]); if (a > 0 && b > 0) return { lo: Math.min(a, b), hi: Math.max(a, b) }; }
+  m = t.match(/(\d+(?:\.\d+)?)\s*(kg|g)(?![a-z])/); if (m) { const a = u(Number(m[1]), m[2]); if (a > 0) return { lo: a, hi: a }; }
+  return null;
+}
+function wCheck(r, w){
+  const c = order && order.chk && order.chk[String(r.kb == null ? '' : r.kb)]; if (!c) return '';
+  const n = Number(w); if (!(w !== '' && isFinite(n))) return '';
+  if (c.max > 0 && n > c.max) return '重量 ' + w + ' は、区分 ' + r.kb + ' の上限（' + c.max + 'kg）を超えています。';
+  if (c.pct > 0) { const k = specKg(r.spec), q = Number(r.qty);
+    if (k && q > 0) { const lo = k.lo * q * (1 - c.pct / 100), hi = k.hi * q * (1 + c.pct / 100), f = x => Math.round(x * 100) / 100;
+      if (n < lo || n > hi) return '重量 ' + w + ' は、規格×発注数（' + f(k.lo * q) + (k.hi !== k.lo ? '～' + f(k.hi * q) : '') + 'kg）から ' + c.pct + '% 以上ずれています。'; } }
+  return '';
+}
+// 箱番の確かめ：小数点なしの 1 以上の数字で、使っている箱番か「いまの最後の箱 + 1」まで（連番）。だめなら知らせて消す
+function boxOk(r, b){
+  b = String(b || '').trim(); if (b === '' || isSt(b)) return true;
+  const bad = m => { say(m); bufB = ''; fld = 'b'; paint(); return false; };
+  if (!/^\d+$/.test(b) || Number(b) < 1) return bad('箱番は小数点なしの数字（1 以上）で入れてください。');
+  const used = new Set(); let mx = 0;
+  rowsOf().forEach(x => { if (x === r) return; const v = valOf(x).b; if (/^\d+$/.test(v)) { used.add(Number(v)); mx = Math.max(mx, Number(v)); } });
+  const n = Number(b);
+  if (!used.has(n) && n > mx + 1) return bad('箱番が連番ではありません（' + (mx ? 'いまの最後の箱は ' + mx + '。次は ' + (mx + 1) : 'まだ箱がないので、最初は 1') + ' です）。');
+  return true;
+}
+// ----- 自動箱番：オンのとき、ロック中で箱番が空いている札を呼んだら、いまの箱番（なければ 1）を入れて重量の欄から（青い字で「自動」） -----
+let autoOn = false, autoB = false; try { autoOn = localStorage.getItem('a6autoBox') === '1'; } catch (e) {}
+function autoFill(r){
+  if (!autoOn || !lockOn || !r || valOf(r).b !== '' || bufB !== '') return;
+  bufB = lastBox() || '1'; autoB = true; fld = 'w';
+}
+$('autoBtn').onclick = () => {
+  autoOn = !autoOn; try { localStorage.setItem('a6autoBox', autoOn ? '1' : '0'); } catch (e) {}
+  if (autoOn && mode === 'card') autoFill(curR); else if (!autoOn && autoB) { bufB = ''; autoB = false; fld = 'b'; }
+  say(autoOn ? '自動箱番：オン（箱番が空いている札は、いまの箱番を自動で入れます）' : '自動箱番：オフ', true); paint();
+};
+let wForce = false;
+$('wNo').onclick = () => { $('wAsk').hidden = true; bufW = ''; qtyW = null; fld = 'w'; paint(); };   // 直す：入れた重量は消して、すぐ打ち直せるように
+$('wYes').onclick = () => { $('wAsk').hidden = true; wForce = true; save(); };
+async function save(){
+  const r = curR; if (!r) return;
+  const old = valOf(r), nb = isLk(r, 'b') ? old.b : bufB.trim(), nw = isSt(nb) ? '' : isLk(r, 'w') ? old.w : calc(bufW).trim();   // 出荷なしは重量を空に（重量がロックされていても）
+  const force = wForce; wForce = false;
+  if (nb !== old.b && !isLk(r, 'b') && !boxOk(r, nb)) return;
+  if (!force && nw !== old.w && nw !== qtyW) { const m = wCheck(r, nw); if (m) { $('wTxt').textContent = m + '　数字が間違っていませんか？'; $('wAsk').hidden = false; return; } }
+  if (nb !== old.b || nw !== old.w) {
+    if (!db || !oid) { say('保存できません（ページのデータが使えません）。'); return; }
+    try { await db.doc('orders/' + oid + '/v/' + r.r).set({ no: r.no, b: nb, w: nw, at: Date.now() }); vals[String(r.r)] = { b: nb, w: nw, at: Date.now() }; }
+    catch (e) { say('保存できませんでした。もう一度 OK を押してください。'); return; }
+  }
+  say(isSt(nb) ? 'No ' + r.no + '：「' + nb + '」を保存しました。' : 'No ' + r.no + '：箱 ' + (nb || '－') + '　重量 ' + (nw || '－') + ' を保存しました。' + ((nb === '') !== (nw === '') ? '（片方だけなので「未入力」に残ります）' : ''), true);
+  let re = ''; if (!lockOn) { lockOn = true; lockStore(); re = '　ロックに戻しました。'; }   // 直して保存したら、自動でロックに戻す
+  if (re) say($('msg').textContent + re, true);
+  mode = 'num'; curR = null; numBuf = ''; paint(); drawList(); toCall();   // 保存したら、枠を定位置（画面の上）に
+}
+function lastBox(){   // 入っている箱番のうち、いちばん大きい番号（いま作っている箱）
+  let mx = '';
+  rowsOf().forEach(r => { const b = valOf(r).b; if (!b || isSt(b)) return;   // 文字の箱番（欠品など）は箱ではない
+    const n = Number(b), m = Number(mx);
+    if (!mx || (!isNaN(n) && (isNaN(m) || n > m))) mx = b; });
+  return mx;
+}
+function paint(){
+  setTimeout(dirtyShow, 0);
+  $('autoBtn').classList.toggle('on', autoOn); $('autoBtn').setAttribute('aria-pressed', autoOn ? 'true' : 'false');
+  $('keys').classList.toggle('nb', mode !== 'card');   // 「戻る」は札を開いているときだけ
+  $('lockBtn').classList.toggle('on', lockOn); $('lockBtn').innerHTML = lockOn ? LOCK_ON : LOCK_OFF; $('call').classList.toggle('unl', !lockOn); $('lockBtn').setAttribute('aria-pressed', lockOn ? 'true' : 'false');
+  const card = mode === 'card' && curR;
+  $('card').classList.toggle('on', !!card); $('numDisp').hidden = !!card;
+  // 計算機の枠の高さを変えない：札を開いたときのいちばん高い高さを覚えて、番号の画面でも同じ高さにする（キーの位置が動かないように）
+  { const ta = $('topArea');
+    // 画面の高さいっぱいまで枠を伸ばす（入力の画面はこの枠だけ見えればよい。規格が長い・メッセージが多いときの余裕に）
+    ta.style.minHeight = ''; const other = $('call').offsetHeight - ta.offsetHeight, avail = window.innerHeight - 8 - other;
+    ta.style.minHeight = Math.max(avail, 0) + 'px'; }   // 札の中身がもっと長いときだけ、その札の間は伸びる
+  $('numVal').textContent = numBuf;
+  const both = card && isLk(curR, 'b') && (isLk(curR, 'w') || isSt(valOf(curR).b));   // 出荷なしの行もロック中は「戻る」   // 箱番・重量とも入っていてロック中：「戻る」
+  $('goKey').textContent = card ? (both ? '戻る' : fld === 'b' && bufW.trim() === '' && !isSt(bufB) ? '次へ' : '保存') : '呼出';   // 押すと保存されるときは「保存」（箱番の欄でも、重量が入っていれば保存になる）
+  if (card) {
+    const r = curR; $('cNo').textContent = r.no; $('cShop').textContent = (r.ini ? r.ini + '　' : '') + (r.shop || '');
+    $('cItem').textContent = r.item || ''; $('cSpec').textContent = r.spec || ''; $('cQty').innerHTML = '<b class="qn num">' + esc(r.qty == null ? '' : r.qty) + '</b><span class="qu">' + esc(r.unit || '') + '</span>';   // 発注数は大きく、単位はその下
+    $('vB').textContent = bufB; $('vW').textContent = bufW; $('vB').classList.toggle('auto', autoB && bufB !== ''); $('vB').classList.toggle('st', isSt(bufB));
+    $('fB').classList.toggle('on', fld === 'b' && !isLk(r, 'b')); $('fW').classList.toggle('on', fld === 'w' && !isLk(r, 'w'));
+    $('fB').classList.toggle('lk', isLk(r, 'b')); $('fW').classList.toggle('lk', isLk(r, 'w'));
+    $('qtyBtn').hidden = !qtyNum(r);
+    const lb = lastBox();   // いちばん最後に入れた箱番だけを出す（重量のときも）
+    $('boxes').innerHTML = lb ? '<span class="lbl">箱番</span><button type="button" data-b="' + esc(lb) + '"' + (fld === 'b' ? '' : ' class="ro"') + '>' + esc(lb) + '</button>' : '';
+  }
+}
+// 発注数：発注数をそのまま重量（実数）に入れるだけ（保存は「保存」ボタン）
+const qtyNum = r => { const q = r && r.qty != null ? String(r.qty).trim() : ''; return q !== '' && !isNaN(Number(q)) ? String(Number(q)) : ''; };
+$('qtyBtn').onclick = () => { if (!curR) return; if (isLk(curR, 'w')) { lkMsg('w'); return; } const q = qtyNum(curR); if (!q) return; bufW = q; fld = 'w';
+  qtyW = q; paint(); say('重量に発注数（' + q + '）を入れました。「保存」で保存します。', true); };   // 保存はしない（保存ボタンで）
+function goBack(){ $('wAsk').hidden = true; $('stAsk').hidden = true; mode = 'num'; curR = null; numBuf = ''; say(''); paint(); drawList(); toCall(); }   // 保存しないで番号の画面へ
+// 箱番の欄を長押し（0.6 秒）：出荷なし（次回納品・キャンセル・欠品）を選ぶ。重量は空にする。保存は「保存」で
+let lpT = null, lpDone = false, lpXY = null;
+const lpStop = () => { if (lpT) { clearTimeout(lpT); lpT = null; } $('fB').classList.remove('lp'); };
+$('fB').addEventListener('pointerdown', e => { lpDone = false; lpXY = [e.clientX, e.clientY]; lpStop();
+  lpT = setTimeout(() => { lpT = null; lpDone = true; if (!curR) return;
+    if (isLk(curR, 'b')) { lkMsg('b'); return; }
+    $('fB').classList.add('lp'); setTimeout(() => $('fB').classList.remove('lp'), 400); $('stAsk').hidden = false; }, 600); });
+$('fB').addEventListener('pointermove', e => { if (lpT && lpXY && Math.hypot(e.clientX - lpXY[0], e.clientY - lpXY[1]) > 10) lpStop(); });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(n => $('fB').addEventListener(n, () => { if (lpT) lpStop(); }));
+$('fB').addEventListener('contextmenu', e => e.preventDefault());
+$('stAsk').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $('stAsk').hidden = true;
+  if (!b.dataset.st) return; bufB = b.dataset.st; bufW = ''; autoB = false; qtyW = null; fld = 'b'; say(''); paint(); });
+$('fB').onclick = () => { if (lpDone) { lpDone = false; return; } if (isLk(curR, 'b')) { lkMsg('b'); return; } fld = 'b'; paint(); };
+$('fW').onclick = () => { if (isLk(curR, 'w')) { lkMsg('w'); return; } fld = 'w'; paint(); };
+$('boxes').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || fld !== 'b') return; if (isLk(curR, 'b')) { lkMsg('b'); return; } bufB = b.dataset.b; autoB = false; fld = 'w'; paint(); });   // 箱番に入れるだけ（保存は「保存」ボタン）
+
+// ----- 一覧・絞り込み -----
+let allTap = 0;   // 「すべて」を2回続けて押したら、品名・箱も含めて絞り込みを全部はずす
+$('fSt').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; stF = b.dataset.v; $('fSt').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  if (stF === 'all') { const now = Date.now(); if (now - allTap < 500) { itemF = ''; $('fItem').value = ''; kbF = '*'; boxF = '*'; allTap = 0; } else allTap = now; } else allTap = 0;
+  drawList(); });
+$('fItem').onchange = () => { itemF = $('fItem').value; drawList(); };
+$('fKb').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; kbF = b.dataset.v; drawList(); });   // 区分：'*'＝すべて、''＝区分なし
+$('fBox').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; boxF = b.dataset.v; drawList(); });
+$('bsum').addEventListener('click', e => { const d = e.target.closest('[data-box]'); if (!d) return; boxF = d.dataset.box; drawList(); $('fBox').scrollIntoView({ block: 'start' }); });
+$('tb').addEventListener('click', e => { const tr = e.target.closest('tr[data-no]'); if (tr) open(tr.dataset.no); });   // open が枠の位置に合わせる
+$('sum').addEventListener('click', e => { const d = e.target.closest('[data-item]'); if (!d) return; itemF = d.dataset.item; kbF = '*'; drawList(); $('tb').scrollIntoView({ block: 'start' }); });
+function drawList(){
+  const rows = rowsOf(), done = rows.filter(isDone).length;
+  $('ttl').textContent = order ? (order.dest || 'スマホ入力') : 'スマホ入力'; $('dt').textContent = order ? (fname(order.src) || order.date || '') : '';
+  $('prog').textContent = rows.length ? done + '/' + rows.length : ''; $('barI').style.width = rows.length ? (done / rows.length * 100) + '%' : '0';
+  const items = {}; rows.forEach(r => { const k = r.item || '（品名なし）'; const o = items[k] = items[k] || { n: 0, done: 0, q: {} }; o.n++; if (isDone(r)) o.done++; const u = r.unit || ''; o.q[u] = (o.q[u] || 0) + (Number(r.qty) || 0); });
+  const names = Object.keys(items).sort((a, b) => items[b].n - items[a].n || a.localeCompare(b, 'ja'));
+  // 品名の選択肢：区分を選んでいれば、その区分の品名だけ
+  const kr = kbF === '*' ? rows : rows.filter(r => String(r.kb == null ? '' : r.kb) === kbF), kn = {}; kr.forEach(r => { const k = r.item || '（品名なし）'; kn[k] = (kn[k] || 0) + 1; });
+  const knames = names.filter(k => kn[k]);
+  const keep = itemF; $('fItem').innerHTML = '<option value="">品名：すべて（' + kr.length + '）</option>' + knames.map(k => '<option value="' + esc(k) + '">' + esc(k) + '（' + kn[k] + '）</option>').join('');
+  $('fItem').value = knames.includes(keep) ? keep : ''; itemF = $('fItem').value;
+  { const kbs = {}; rows.forEach(r => { const k = r.kb == null ? '' : String(r.kb); kbs[k] = (kbs[k] || 0) + 1; });
+    const ks = Object.keys(kbs).filter(k => k !== '').sort((a, b) => (Number(a) || 0) - (Number(b) || 0) || a.localeCompare(b, 'ja'));
+    // 区分は、この発注書にある区分だけ出す（小さい順）
+    const all = ks;
+    $('fKb').hidden = !ks.length; if (kbF !== '*' && kbF !== '' && !all.includes(kbF)) kbF = '*'; if (kbF === '' && !kbs['']) kbF = '*';
+    const bt = (v, t) => '<button type="button" data-v="' + esc(v) + '"' + (kbF === v ? ' class="on"' : '') + '>' + t + '</button>';
+    $('fKb').innerHTML = bt('*', '区分：全') + all.map(k => bt(k, esc(k))).join('') + (kbs[''] ? bt('', 'なし') : ''); }
+  const qtxt = o => Object.entries(o.q).map(([u, n]) => (Math.round(n * 100) / 100) + ' ' + u).join('・');
+  $('sum').innerHTML = names.map(k => '<div data-item="' + esc(k) + '"><span>' + esc(k) + '</span><span class="c">' + qtxt(items[k]) + '</span><span class="c num">' + items[k].done + '/' + items[k].n + '</span></div>').join('') || '<div class="empty">発注書がまだありません。</div>';
+  // 箱：使っている箱番（数の順）と、箱ごとの店（箱に書く名前）
+  const boxes = {}; rows.forEach(r => { const v = valOf(r), b = v.b; const o = boxes[b] = boxes[b] || { n: 0, shops: [], w: 0, nw: 0 }; o.n++; const wn = Number(v.w); if (v.w !== '' && isFinite(wn)) o.w += wn; else o.nw++; const sh = ((r.ini || '') + ' ' + (r.shop || '')).trim(); if (sh && !o.shops.includes(sh)) o.shops.push(sh); });
+  const bkeys = Object.keys(boxes).filter(b => b !== '' && !isSt(b)).sort((a, b) => (Number(a) || 0) - (Number(b) || 0) || a.localeCompare(b, 'ja'));
+  if (boxF !== '*' && !bkeys.includes(boxF)) boxF = '*';
+  $('fBox').innerHTML = '<button type="button" data-v="*"' + (boxF === '*' ? ' class="on"' : '') + '>箱：すべて</button>' + bkeys.map(b => '<button type="button" data-v="' + esc(b) + '"' + (boxF === b ? ' class="on"' : '') + '>' + esc(b) + '</button>').join('') ;   // 「箱なし」は出さない
+  const bi = boxF !== '*' && boxes[boxF];
+  const wsum = o => (Math.round(o.w * 1000) / 1000) + (o.nw ? '（重量なし ' + o.nw + ' 行）' : '');   // 箱の重量の合計
+  $('boxInfo').hidden = !bi;
+  if (bi) $('boxInfo').innerHTML = '<span class="bn num">' + (boxF === '' ? '箱なし' : '箱 ' + esc(boxF)) + '</span><div class="cs">' + esc(bi.shops.join('・')) + '</div><div class="ct">' + bi.n + ' 行・店 ' + bi.shops.length + '</div><div class="bw num">重量 合計 ' + wsum(bi) + '</div>';
+  $('bsum').innerHTML = bkeys.map(b => '<div data-box="' + esc(b) + '"><span class="bn num">' + esc(b) + '</span><span class="cs">' + esc(boxes[b].shops.join('・')) + '</span><span class="c num">' + boxes[b].n + '行</span><span class="c num bw2">' + (Math.round(boxes[b].w * 1000) / 1000) + (boxes[b].nw ? '<small>＋' + boxes[b].nw + '未</small>' : '') + '</span></div>').join('') +
+    (boxes[''] ? '<div><span class="bn" style="font-size:14px;width:auto;white-space:nowrap">箱なし</span><span class="cs"></span><span class="c num">' + boxes[''].n + '行</span></div>' : '') || '<div class="empty">まだ箱番が入っていません。</div>';
+  const list = rows.filter(r => (stF === 'all' || (stF === 'blank' ? !isDone(r) : isDone(r))) && (!itemF || (r.item || '（品名なし）') === itemF) && (kbF === '*' || String(r.kb == null ? '' : r.kb) === kbF) && (boxF === '*' || valOf(r).b === boxF));
+  $('tb').innerHTML = list.map(r => { const v = valOf(r);
+    return '<tr data-no="' + esc(r.no) + '" class="' + (isDone(r) ? '' : 'blank') + (curR === r ? ' cur' : '') + '"><td class="n num">' + esc(r.no) + '</td><td>' + esc(r.item) + '<span class="s">' + esc(r.spec) + '</span><span class="s">' + esc((r.ini || '') + ' ' + (r.shop || '')) + '</span></td>' +
+      '<td class="q">' + esc(fmtQ(r)) + '</td><td class="bx num' + (isSt(v.b) ? ' st' : '') + '">' + (esc(v.b) || '－') + '</td><td class="w num">' + (esc(v.w) || '－') + '</td></tr>'; }).join('');
+  $('emp').hidden = list.length > 0 || !rows.length;
+  // 未入力の絞り込み：全部済みなら青で「全て入力済です」。重量の空欄だけが残っていて箱番は全部決まっていれば、緑で知らせる（出荷なしも箱番が決まった扱い）
+  { const dm = $('doneMsg'), blank = rows.filter(r => !isDone(r)), noBox = rows.filter(r => valOf(r).b === '');
+    if (stF === 'blank' && rows.length && !blank.length) { dm.className = 'donemsg all'; dm.textContent = '全て入力済です'; dm.hidden = false; $('emp').hidden = true; }
+    else if (stF === 'blank' && rows.length && !noBox.length) { dm.className = 'donemsg box'; dm.textContent = '箱番は全て入力済です（重量の空欄 ' + blank.length + ' 行）'; dm.hidden = false; }
+    else dm.hidden = true; }
+}
+
+// ----- データ（Claude のページの保存） -----
+function pickOrder(id, clr){
+  if (id !== oid || clr) {   // 別の発注書に切り替えたとき・PC から受け取ったときは、絞り込みを全部はずす
+    stF = 'all'; itemF = ''; kbF = '*'; boxF = '*'; $('fItem').value = '';
+    $('fSt').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.v === 'all'));
+  }
+  if (unsubO) unsubO(); if (unsubV) unsubV(); order = null; vals = {}; oid = id; lockLoad(); mode = 'num'; curR = null; paint(); drawList();
+  if (!db || !id) return;
+  subOrder(id);
+}
+// 今の発注書の中身を見張る（画面の状態はそのまま）。PC から送り直されて中身が入れ替わったら、画面にも知らせる
+function subOrder(id){
+  if (unsubO) unsubO(); if (unsubV) unsubV();
+  const t = setTimeout(() => say('データを読み込めていません。電波を確かめて、少し待ってください。'), 10000);
+  unsubO = db.doc('orders/' + id).onSnapshot(s => {
+    clearTimeout(t); if (id !== oid) return;
+    const nw = s.exists ? s.data() : null, old = order;
+    order = nw; drawList(); paint();
+    if (old && nw && Number(old.at) !== Number(nw.at)) {   // 同じ発注書が PC から送り直された
+      const lost = Object.keys(vals).length;
+      say('PC から送り直されたので、この発注書の箱番・重量を PC の値に置き換えました。' + (lost ? '前の入力は上の「バックアップ」から戻せます。' : ''));
+      const tm = $('topMsg'); if (tm) { tm.className = 'msg warn'; tm.textContent = '「' + (nw.dest || '') + '」は PC から送り直され、入力が PC の値に置き換わりました。前の入力は「バックアップ」から戻せます。'; }
+    }
+  }, () => { clearTimeout(t); say('発注書を読み込めませんでした。'); });
+  unsubV = db.collection('orders/' + id + '/v').onSnapshot(s => { if (id !== oid) return; const o = {}; s.docs.forEach(d => { o[d.id] = d.data(); }); vals = o; drawList(); }, () => {});
+}
+// 発注書の並び：A6アプリの保存データと同じグループの順（力生 → 東橋貿易 → マルセイ …）、グループの中は向け地の順（香港 → マカオ、ダナン → ハノイ → ホーチミン）
+//  同じ向け地は、先にスマホへ送った順（元の発注書が上、あとから来た追加の発注書がその下）
+const SEL_GRP = ['力生', '東橋貿易', '東橋', 'マルセイ', 'Hawaii', 'ハワイ', 'FoodsClassic', 'オーシャン貿易', 'アジャスト', 'アドバンス', 'NextStage', 'ネクストステージ', '豊潤'];
+const SEL_SUB = [/香港/, /TG/, /マカオ|澳門/, /マレーシア/, /ベトナム/, /インドネシア/, /FT/, /WS/, /NCL/, /TY/, /ダナン/, /ハノイ/, /ホーチミン/];
+const selGrp = x => String(x.dest || '').split(/[（(]/)[0].trim() || 'その他';
+const selKey = x => { const g = SEL_GRP.indexOf(selGrp(x)), i = SEL_SUB.findIndex(re => re.test(x.dest || '')); return [g < 0 ? 99 : g, i < 0 ? 99 : i, Number(x.t0 || x.at) || 0]; };
+function selSorted(list){ return list.slice().sort((a, b) => { const p = selKey(a), q = selKey(b); return (p[0] - q[0]) || selGrp(a).localeCompare(selGrp(b), 'ja') || (p[1] - q[1]) || (p[2] - q[2]); }); }
+function drawSel(){
+  const list = selSorted(meta && Array.isArray(meta.list) ? meta.list : []);
+  let lastG = null, h = '';
+  list.forEach(x => { const g = selGrp(x); if (g !== lastG) { if (lastG !== null) h += '</optgroup>'; h += '<optgroup label="' + esc(g) + '">'; lastG = g; } h += '<option value="' + esc(x.oid) + '">' + esc((x.dest || '') + '　' + (x.name || x.date || '')) + '</option>'; });
+  if (lastG !== null) h += '</optgroup>';
+  $('ordSel').innerHTML = list.length ? h : '<option value="">発注書がまだありません（PC から送ってください）</option>';
+  if (oid) $('ordSel').value = oid;
+}
+// 上のお知らせは、発注書を選び直したとき・バックアップから戻したときに消す
+function clrTop(){ const m = $('topMsg'); if (m) { m.className = 'msg'; m.textContent = ''; } }
+$('ordSel').onchange = () => { clrTop(); pickOrder($('ordSel').value); };
+// ----- 発注書を消す（1つずつ・PC の保存データと同じ時刻に自動で・PC で消したもの） -----
+// ----- バックアップ：発注書を消す・自動で消す・PC の値で置き換える前に、その発注書と箱番・重量を baks/ に写す（3日分） -----
+const BAK_DAYS = 3;
+async function bakTake(id, why){
+  if (!db || !id) return 0;
+  let vs = [], o = null;
+  try { vs = (await db.collection('orders/' + id + '/v').get()).docs.map(d => Object.assign({ r: Number(d.id) }, d.data() || {})).filter(v => String(v.b || '') !== '' || String(v.w || '') !== ''); } catch (e) {}
+  if (!vs.length) return 0;
+  try { const d = await db.doc('orders/' + id).get(); o = d.exists ? d.data() : null; } catch (e) {}
+  const at = Date.now();
+  try { await db.doc('baks/' + id + '_' + at).set({ oid: id, at, why: String(why || ''), dest: o ? o.dest || '' : '', date: o ? o.date || '' : '', order: o, vals: vs }); } catch (e) { return 0; }
+  bakPrune(); return vs.length;
+}
+async function bakPrune(){ try { const lim = Date.now() - BAK_DAYS * 864e5; const ds = (await db.collection('baks').get()).docs; for (const d of ds) { const b = d.data() || {}; if (!(Number(b.at) > lim)) await db.doc('baks/' + d.id).delete(); } } catch (e) {} }
+async function bakList(){ try { return (await db.collection('baks').get()).docs.map(d => Object.assign({ id: d.id }, d.data() || {})).filter(b => Number(b.at) > Date.now() - BAK_DAYS * 864e5).sort((a, b) => b.at - a.at); } catch (e) { return []; } }
+const hm = t => { const d = new Date(t); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
+// いま開いている発注書のバックアップだけを出す。ほかの発注書（消した発注書を含む）は「ほかの発注書も表示」で出す
+let bakAll = false;
+// バックアップの入力のようす：「入力 37行中 37行」（全部入っていれば緑、まだのときは黄色）。箱番が文字（次回納品など）の行も入力済に数える
+function bakDone(b){
+  const tot = b.order && Array.isArray(b.order.rows) ? b.order.rows.length : 0;
+  const n = (b.vals || []).filter(v => { const bb = String(v.b == null ? '' : v.b).trim(), w = String(v.w == null ? '' : v.w).trim(); return isSt(bb) || (bb !== '' && w !== ''); }).length;
+  if (!tot) return '入力 ' + n + '行';
+  return '<span class="bkd' + (n >= tot ? ' ok' : '') + '">入力 ' + tot + '行中 ' + n + '行' + (n >= tot ? '（完了）' : '') + '</span>';
+}
+async function bakShow(all){
+  bakAll = !!all;
+  const bs0 = await bakList(), other = bs0.filter(b => b.oid !== oid).length;
+  const bs = bakAll || !oid ? bs0 : bs0.filter(b => b.oid === oid);
+  const cur = order ? (order.dest || '') + ' ' + (order.date || '') : '';
+  const head = (!bakAll && oid ? '<div class="bkn">「' + esc(cur) + '」のバックアップ</div>' : '');
+  const more = oid && other ? '<button type="button" class="btn sub" id="bakMore" style="width:100%;margin-top:6px">' + (bakAll ? 'いまの発注書だけ表示' : 'ほかの発注書も表示（' + other + ' 件・消した発注書もここ）') + '</button>' : '';
+  $('bakList').innerHTML = head + (bs.length ? bs.map(b => '<div class="bk"><div><b>' + esc(hm(b.at)) + '</b>　' + esc(b.why || '') + '<br>' + esc((b.dest || '') + ' ' + (b.date || '')) + '　' + bakDone(b) + '</div><button type="button" class="btn sub" data-id="' + esc(b.id) + '">戻す</button></div>').join('')
+    : '<div class="empty">バックアップはありません（消す・置き換える前に自動で取り、' + BAK_DAYS + '日分残します）。</div>') + more;
+  const mb = $('bakMore'); if (mb) mb.onclick = () => bakShow(!bakAll);
+  $('bakBox').hidden = false;
+}
+async function bakRestore(bid){
+  const b = (await bakList()).find(x => x.id === bid); if (!b) return;
+  const id = b.oid;
+  try {
+    let o = null; try { const d = await db.doc('orders/' + id).get(); o = d.exists ? d.data() : null; } catch (e) {}
+    if (!o) {   // 発注書が消えていれば、写しから作り直す
+      if (!b.order) { say('写しに発注書がないので戻せません。PC から送り直してから戻してください。'); return; }
+      await db.doc('orders/' + id).set(b.order);
+      const list = (meta && Array.isArray(meta.list) ? meta.list : []).filter(x => x.oid !== id);
+      list.unshift({ oid: id, dest: b.order.dest || '', date: b.order.date || '', name: fname(b.order.src), at: Date.now(), t0: Number(b.order.at) || Date.now() });
+      await db.doc('meta/cur').set(Object.assign({}, meta || {}, { oid: id, list: list.slice(0, 50) }));
+    } else await bakTake(id, '戻す前');   // 戻す前の今の値も写しておく（戻したのを、また戻せるように）
+    await inBatches(b.vals || [], v => db.doc('orders/' + id + '/v/' + v.r).set({ no: v.no || '', b: String(v.b || ''), w: String(v.w || ''), at: Number(v.at) || Date.now() }));
+    $('bakBox').hidden = true; clrTop(); pickOrder(id); say('バックアップ（' + hm(b.at) + '）から ' + (b.vals || []).length + ' 行を戻しました。', true);
+  } catch (e) { say('戻せませんでした。もう一度押してください。'); }
+}
+async function delOrder(id, why){   // 発注書と、入れた箱番・重量（v）を消す（消す前にバックアップ）
+  await bakTake(id, why || '削除');
+  try { const vs = await db.collection('orders/' + id + '/v').get(); await inBatches(vs.docs, d => db.doc('orders/' + id + '/v/' + d.id).delete()); } catch (e) {}
+  await db.doc('orders/' + id).delete();
+  try { await db.doc('outs/' + id).delete(); } catch (e) {}
+}
+async function delOrders(ids, extra, why){   // まとめて消して、一覧（meta/cur）から外す
+  if (!db || !ids.length) return;
+  for (const id of ids) { try { await delOrder(id, why); } catch (e) {} }
+  const list = (meta && Array.isArray(meta.list) ? meta.list : []).filter(x => !ids.includes(x.oid));
+  const top = list.length ? list[0].oid : '';
+  await db.doc('meta/cur').set(Object.assign({}, meta || {}, extra || {}, { oid: top, list }));
+  if (ids.includes(oid)) pickOrder(top);
+}
+$('delBtn').onclick = () => {
+  if (!order) { say('消す発注書を選んでください。'); return; }
+  $('delTxt').textContent = '「' + (order.dest || '') + ' ' + (order.date || '') + '」と、入れた箱番・重量を消しますか？（' + BAK_DAYS + '日間は「バックアップ」から戻せます）';
+  $('delAsk').hidden = false;
+};
+$('bakBtn').onclick = () => { if (!$('bakBox').hidden) { $('bakBox').hidden = true; return; } bakShow(); };
+$('bakClose').onclick = () => { $('bakBox').hidden = true; };
+$('bakList').addEventListener('click', e => { const b = e.target.closest('button[data-id]'); if (b) bakRestore(b.dataset.id); });
+$('delNo').onclick = () => { $('delAsk').hidden = true; };
+$('delYes').onclick = async () => { $('delAsk').hidden = true; const id = oid; try { await delOrders([id]); say('発注書を消しました。', true); } catch (e) { say('消せませんでした。もう一度押してください。'); } };
+// 自動で消す時刻（PC の保存データの「毎日 ◯時にすべて削除」と同じ。PC から送るときに一緒に届く）
+function lastClr(){   // 直近の削除の時刻（今より前で一番新しいもの）
+  const t = meta && meta.clr; if (!t || !/^\d{1,2}:\d{2}$/.test(t)) return 0;
+  const [h, mi] = t.split(':').map(Number), d = new Date(); d.setHours(h, mi, 0, 0);
+  if (d.getTime() > Date.now()) d.setDate(d.getDate() - 1);
+  return d.getTime();
+}
+let clrBusy = false;
+async function autoClear(){
+  if (!db || !meta || clrBusy) return; const b = lastClr(); if (!b) return;
+  const old = (Array.isArray(meta.list) ? meta.list : []).filter(x => (x.at || 0) < b).map(x => x.oid);
+  if (!old.length) return;
+  clrBusy = true; try { await delOrders(old, null, '自動削除'); } finally { clrBusy = false; }
+}
+setInterval(() => { autoClear(); }, 60000);
+let want = ''; try { const h = String(location.hash || '') + '&' + String(location.search || ''); const m = h.match(/[#&?]o=([A-Za-z0-9_\-]+)/); if (m) want = m[1]; } catch (e) {}
+(async () => {
+  try { db = await sbLogin(); } catch (e) { db = null; }
+  if (!db) { say('データにつながりません。電波を確かめて、ページを開き直してください。'); return; }
+  subMeta();
+})();
+// スマホが眠っていた・電波が切れていたあとは、つながりが切れて古い画面のままになることがある。戻ってきたら読み直す
+let unsubM = null, hidAt = 0;
+function refreshAll(){ if (!db) return; subMeta(); if (oid) subOrder(oid); }
+document.addEventListener('visibilitychange', () => { if (document.hidden) hidAt = Date.now(); else if (Date.now() - hidAt > 3000) refreshAll(); });
+window.addEventListener('pageshow', e => { if (e.persisted) refreshAll(); });
+window.addEventListener('online', refreshAll);
+function subMeta(){
+  if (unsubM) unsubM();
+  unsubM = db.doc('meta/cur').onSnapshot(s => {
+    meta = s.exists ? s.data() : { list: [] };
+    const first = meta && meta.oid;
+    if (want && Array.isArray(meta.list) && meta.list.some(x => x.oid === want)) { const w = want; want = ''; lastTop = first; pickOrder(w, true); }   // アプリの「スマホを開く」から開いたときは、その発注書を出す（#o=発注書）
+    else if (first !== lastTop) { const was = lastTop; lastTop = first; if (!oid || (was !== undefined && mode === 'num')) pickOrder(first || ''); }   // PC から新しい発注書が来たら、それに切り替える（入力中は切り替えない）
+    drawSel(); autoClear();
+  }, () => say('データを読み込めませんでした。'));
+}
+
+// ----- PC：アプリから貼り付け（ページのどこで Ctrl＋V を押しても受け取る） -----
+// 受け取りは1回ずつ（時間がかかるので、続けて Ctrl＋V を押されても2回目は受けない）
+let rcvBusy = false;
+async function receive(t){
+  const ms = [$('topMsg'), $('inMsg')], put = (cls, x) => ms.forEach(m => { m.className = 'msg' + (cls ? ' ' + cls : ''); m.textContent = x; });
+  if (rcvBusy) { put('', '受け取り中です。終わるまでお待ちください（もう一度押さなくて大丈夫です）。'); return; }
+  rcvBusy = true; put('ok', '受け取り中です…（数秒かかります。このままお待ちください）');
+  try { await receive1(t, put); } finally { rcvBusy = false; }
+}
+// たくさんの消す・書くを、少しずつまとめて（10 件ずつ同時に）
+async function inBatches(list, f){ for (let i = 0; i < list.length; i += 10) await Promise.all(list.slice(i, i + 10).map(f)); }
+async function receive1(t, put){
+  let p = null; try { p = JSON.parse(String(t || '').trim()); } catch (e) {}
+  if (!p || p.t !== 'a6m' || !p.oid || !Array.isArray(p.rows)) { put('', 'アプリの「スマホを開く」でコピーした内容ではないようです。もう一度アプリで「スマホを開く」を押してから貼り付けてください。'); return; }
+  if (!db) { put('', 'このページのデータが使えません。'); return; }
+  const id = String(p.oid).replace(/[^A-Za-z0-9_\-.~:@+]/g, '').slice(0, 60);
+  // 置き換え（PC の値で）：スマホで保存した箱番・重量を、バックアップを取ってから消す。まだ PC に取り込んでいない入力（最後の「取込用にコピー」より後）があればお知らせ
+  const rep = p.mode === 'replace';
+  let pend = [];
+  if (rep) {
+    let vs = [], out = 0; try { vs = (await db.collection('orders/' + id + '/v').get()).docs.map(d => d.data() || {}); } catch (e) {}
+    try { const o = await db.doc('outs/' + id).get(); out = o.exists ? Number((o.data() || {}).at) || 0 : 0; } catch (e) {}
+    pend = vs.filter(v => (Number(v.at) || 0) > out && (String(v.b || '') !== '' || String(v.w || '') !== ''));
+    await bakTake(id, '置き換え');
+  }
+  try {
+    if (rep) { const vs = await db.collection('orders/' + id + '/v').get(); await inBatches(vs.docs, d => db.doc('orders/' + id + '/v/' + d.id).delete()); }
+    const order0 = { dest: String(p.dest || ''), date: String(p.date || ''), src: String(p.src || ''), at: Date.now(), chk: p.chk && typeof p.chk === 'object' ? p.chk : {},
+      rows: p.rows.slice(0, 600).map(r => ({ r: Number(r.r), no: String(r.no == null ? '' : r.no), ini: String(r.ini || ''), shop: String(r.shop || ''), item: String(r.item || ''), qty: r.qty == null ? '' : r.qty, unit: String(r.unit || ''), spec: String(r.spec || ''), b0: r.b0 == null ? '' : String(r.b0), w0: r.w0 == null ? '' : String(r.w0), kb: r.kb == null ? '' : String(r.kb) })) };
+    await db.doc('orders/' + id).set(order0);
+    const prev = (meta && Array.isArray(meta.list) ? meta.list : []).find(x => x.oid === id);   // 送り直しでも、最初に送った時刻（並び順）は変えない
+    let list = (meta && Array.isArray(meta.list) ? meta.list : []).filter(x => x.oid !== id);
+    const gone = Array.isArray(p.keep) ? list.filter(x => !p.keep.includes(x.oid)).map(x => x.oid) : [];   // PC の保存データで消した発注書は、ここからも消す
+    for (const g of gone) { try { await delOrder(g, 'PC で削除'); } catch (e) {} }
+    list = list.filter(x => !gone.includes(x.oid));
+    list.unshift({ oid: id, dest: order0.dest, date: order0.date, name: fname(order0.src), at: order0.at, t0: prev ? Number(prev.t0 || prev.at) || order0.at : order0.at });
+    await db.doc('meta/cur').set({ oid: id, list: list.slice(0, 50), clr: typeof p.clr === 'string' ? p.clr : (meta && meta.clr) || '' });
+    if (pend.length) put('warn', '「' + order0.dest + ' ' + order0.date + '」を PC の値に置き換えました。取り込み前の入力 ' + pend.length + ' 行（No ' + pend.slice(0, 8).map(v => v.no).join('・') + (pend.length > 8 ? ' …' : '') + '）も置き換わりました。バックアップに残してあるので、上の「バックアップ」から戻せます。');
+    else put('ok', '「' + order0.dest + ' ' + order0.date + '」（' + order0.rows.length + ' 行）を受け取りました' + (rep ? '（PC の値に置き換え）' : '') + '。スマホでこのページを開いて入力してください。');
+    $('inBox').value = ''; pickOrder(id, true);
+  } catch (e) { put('', '保存できませんでした。もう一度 Ctrl＋V を押してください。'); }
+}
+document.addEventListener('paste', e => {
+  const t = (e.clipboardData || window.clipboardData) ? (e.clipboardData || window.clipboardData).getData('text') : '';
+  if (!t || !/"t"\s*:\s*"a6m"/.test(t)) return;   // ほかの貼り付けはそのまま
+  e.preventDefault(); receive(t);
+});
+// ----- PC：取込用にコピー（上のボタン・下のボタンのどちらでも） -----
+async function copyOut(m, box){
+  m.className = 'msg';
+  if (!order) { m.textContent = '発注書を選んでください。'; return; }
+  const out = rowsOf().map(r => ({ r: r.r, no: r.no, v: vals[String(r.r)] })).filter(x => x.v).map(x => ({ r: x.r, no: x.no, b: x.v.b, w: x.v.w }));
+  const txt = JSON.stringify({ t: 'a6mb', v: 1, oid, src: order.src || '', dest: order.dest || '', vals: out });
+  try { if (db && oid) await db.doc('outs/' + oid).set({ at: Date.now() }); } catch (e) {}   // ここまでの入力は PC に渡した（置き換えの確かめに使う）
+  try { await navigator.clipboard.writeText(txt); m.className = 'msg ok'; m.textContent = out.length + ' 行分をコピーしました。アプリの保存データで「スマホ入力を取り込む」を押してください。'; box.hidden = true; }
+  catch (e) { box.hidden = false; box.value = txt; box.select(); m.textContent = '下の枠の文字を Ctrl＋C でコピーしてから、アプリの「スマホ入力を取り込む」を押してください。'; }
+}
+$('outBtn').onclick = () => copyOut($('outMsg'), $('outBox'));
+$('outBtn2').onclick = () => copyOut($('topMsg'), $('outBox2'));
+paint(); drawList();
+}
+</script>
+<div class="sbout"><button type="button" onclick="sbLogout()">ログアウト</button></div>
+</body>
+</html>
