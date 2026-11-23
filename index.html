@@ -185,6 +185,24 @@ function sbMakeDb(sb){
   const copy = d => d == null ? d : JSON.parse(JSON.stringify(d));
   const snap = (path, row) => ({ id: idOf(path), exists: !!row, data: () => row ? copy(row.data) : undefined, metadata: { fromCache: false } });
   const chk = r => { if (r.error) throw r.error; return r.data; };
+  // ログインが切れていないか確かめてから読み書きする。切れていたら自動でつなぎ直し、それでもだめなら「ログインし直してください」を出す
+  // （ログインが切れたまま読むと、エラーにならずに「何もない」と返ってくるため、発注書が読めない・消せないように見えていた）
+  const isAuthErr = e => !!e && (e.status === 401 || e.status === 403 || e.code === 'PGRST301' || e.code === 'PGRST302' || e.code === '42501' || /jwt|token|auth/i.test(String(e.message || '')));
+  const ensure = async () => {
+    let ses = null; try { ses = (await sb.auth.getSession()).data.session; } catch (e) {}
+    if (!ses) { try { ses = (await sb.auth.refreshSession()).data.session; } catch (e) {} }
+    if (!ses) { sbAuthLost(); throw new Error('ログインが切れました'); }
+  };
+  const run = async fn => {
+    await ensure();
+    let r = await fn();
+    if (r.error && isAuthErr(r.error)) {   // 断られたら、つなぎ直してもう1回
+      try { await sb.auth.refreshSession(); } catch (e) {}
+      r = await fn();
+      if (r.error && isAuthErr(r.error)) sbAuthLost();
+    }
+    sbAuthOk(); return chk(r);
+  };
   // 変わったら、その所を見ている見張りだけを読み直す（何度も続けて変わったら 80ms まとめて1回）
   const watchers = new Set();
   const kickAll = p => watchers.forEach(w => { if (w.match(p)) w.kick(); });
@@ -203,14 +221,14 @@ function sbMakeDb(sb){
     return () => { live = false; clearTimeout(t); watchers.delete(w); };
   };
   const docRef = path => ({ id: idOf(path), path,
-    async get(){ const rows = chk(await sb.from('docs').select('path,data').eq('path', path).limit(1)); return snap(path, rows[0]); },
-    async set(o){ chk(await sb.from('docs').upsert({ path, parent: parentOf(path), data: copy(o), updated_at: new Date().toISOString() })); kickAll(path); },
-    async delete(){ chk(await sb.from('docs').delete().eq('path', path)); kickAll(path); },
+    async get(){ const rows = await run(() => sb.from('docs').select('path,data').eq('path', path).limit(1)); return snap(path, rows[0]); },
+    async set(o){ await run(() => sb.from('docs').upsert({ path, parent: parentOf(path), data: copy(o), updated_at: new Date().toISOString() })); kickAll(path); },
+    async delete(){ await run(() => sb.from('docs').delete().eq('path', path)); kickAll(path); },
     onSnapshot(next, err){ return watch(p => p === path, () => this.get(), next, err); } });
   const colRef = path => ({ path, doc: id => docRef(path + '/' + id),
     async get(){
       const out = []; let from = 0;
-      for (;;) { const rows = chk(await sb.from('docs').select('path,data').eq('parent', path).range(from, from + 999)); out.push(...rows); if (rows.length < 1000) break; from += 1000; }
+      for (;;) { const rows = await run(() => sb.from('docs').select('path,data').eq('parent', path).range(from, from + 999)); out.push(...rows); if (rows.length < 1000) break; from += 1000; }
       const docs = out.map(r => snap(r.path, r)); return { docs, size: docs.length, empty: !docs.length };
     },
     onSnapshot(next, err){ return watch(p => parentOf(p) === path, () => this.get(), next, err); } });
@@ -238,6 +256,19 @@ async function sbLogin(){
   });
   return sbMakeDb(SB);
 }
+// ログインが切れたときの知らせ（画面のいちばん上。押すとログインの画面へ）
+function sbAuthLost(){
+  let el = document.getElementById('sbAuthBar');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'sbAuthBar';
+    el.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:60;background:#d0021b;color:#fff;padding:10px 12px;font-weight:700;display:flex;gap:10px;align-items:center;justify-content:space-between';
+    el.innerHTML = '<span>ログインが切れました。ログインし直してください。</span><button type="button" style="border:0;border-radius:6px;padding:8px 12px;font-weight:700;background:#fff;color:#d0021b">ログインし直す</button>';
+    el.querySelector('button').onclick = () => sbLogout();
+    document.body.appendChild(el);
+  }
+  el.hidden = false;
+}
+function sbAuthOk(){ const el = document.getElementById('sbAuthBar'); if (el) el.hidden = true; }
 async function sbLogout(){ try { await SB.auth.signOut(); } catch (e) {} location.reload(); }
 
 </script>
