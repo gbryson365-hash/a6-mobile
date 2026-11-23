@@ -559,11 +559,11 @@ $('ordSel').onchange = () => { clrTop(); pickOrder($('ordSel').value); };
 // ----- 発注書を消す（1つずつ・PC の保存データと同じ時刻に自動で・PC で消したもの） -----
 // ----- バックアップ：発注書を消す・自動で消す・PC の値で置き換える前に、その発注書と箱番・重量を baks/ に写す（3日分） -----
 const BAK_DAYS = 3;
-async function bakTake(id, why){
+async function bakTake(id, why, always){   // always：入力がなくても発注書を写す（消すときは必ず残す。あとで「戻す」で発注書ごと戻せる）
   if (!db || !id) return 0;
   let vs = [], o = null;
   try { vs = (await db.collection('orders/' + id + '/v').get()).docs.map(d => Object.assign({ r: Number(d.id) }, d.data() || {})).filter(v => String(v.b || '') !== '' || String(v.w || '') !== ''); } catch (e) {}
-  if (!vs.length) return 0;
+  if (!vs.length && !always) return 0;
   try { const d = await db.doc('orders/' + id).get(); o = d.exists ? d.data() : null; } catch (e) {}
   const at = Date.now();
   try { await db.doc('baks/' + id + '_' + at).set({ oid: id, at, why: String(why || ''), dest: o ? o.dest || '' : '', date: o ? o.date || '' : '', order: o, vals: vs }); } catch (e) { return -1; }   // -1：バックアップを取れなかった（消すのをやめる）
@@ -604,16 +604,17 @@ async function bakRestore(bid){
     if (!o) {   // 発注書が消えていれば、写しから作り直す
       if (!b.order) { say('写しに発注書がないので戻せません。PC から送り直してから戻してください。'); return; }
       await db.doc('orders/' + id).set(b.order);
-      const list = (meta && Array.isArray(meta.list) ? meta.list : []).filter(x => x.oid !== id);
+      let m0 = meta; try { const s = await db.doc('meta/cur').get(); if (s.exists) m0 = s.data(); } catch (e) {}   // 一覧は読み直してから足す
+      const list = (m0 && Array.isArray(m0.list) ? m0.list : []).filter(x => x.oid !== id);
       list.unshift({ oid: id, dest: b.order.dest || '', date: b.order.date || '', name: fname(b.order.src), at: Date.now(), t0: Number(b.order.at) || Date.now() });
-      await db.doc('meta/cur').set(Object.assign({}, meta || {}, { oid: id, list: list.slice(0, 50) }));
+      await db.doc('meta/cur').set(Object.assign({}, m0 || {}, { oid: id, list: list.slice(0, 50) }));
     } else await bakTake(id, '戻す前');   // 戻す前の今の値も写しておく（戻したのを、また戻せるように）
     await inBatches(b.vals || [], v => db.doc('orders/' + id + '/v/' + v.r).set({ no: v.no || '', b: String(v.b || ''), w: String(v.w || ''), at: Number(v.at) || Date.now() }));
     $('bakBox').hidden = true; clrTop(); pickOrder(id); say('バックアップ（' + hm(b.at) + '）から ' + (b.vals || []).length + ' 行を戻しました。', true);
   } catch (e) { say('戻せませんでした。もう一度押してください。'); }
 }
 async function delOrder(id, why){   // 発注書と、入れた箱番・重量（v）を消す（消す前にバックアップ。取れなかったら消さない）。戻り値：バックアップした行数
-  const n = await bakTake(id, why || '削除');
+  const n = await bakTake(id, why || '削除', true);
   if (n < 0) throw new Error('バックアップを取れませんでした');
   try { const vs = await db.collection('orders/' + id + '/v').get(); await inBatches(vs.docs, d => db.doc('orders/' + id + '/v/' + d.id).delete()); } catch (e) {}
   await db.doc('orders/' + id).delete();
@@ -624,10 +625,12 @@ async function delOrders(ids, extra, why){   // まとめて消して、一覧�
   if (!db || !ids.length) return { n: 0, done: [] };
   let n = 0; const done = [];
   for (const id of ids) { try { n += await delOrder(id, why); done.push(id); } catch (e) {} }   // バックアップを取れなかった発注書は消さない（一覧にも残す）
-  ids = done;
-  const list = (meta && Array.isArray(meta.list) ? meta.list : []).filter(x => !ids.includes(x.oid));
+  ids = done; if (!ids.length) return { n, done };   // 消せたものがなければ、一覧は書き換えない
+  // 一覧は、書く直前に読み直してから外す（手元の一覧が古いと、PC があとから送った発注書を一覧から落としてしまうため）
+  let m0 = meta; try { const s = await db.doc('meta/cur').get(); if (s.exists) m0 = s.data(); } catch (e) {}
+  const list = (m0 && Array.isArray(m0.list) ? m0.list : []).filter(x => !ids.includes(x.oid));
   const top = list.length ? list[0].oid : '';
-  await db.doc('meta/cur').set(Object.assign({}, meta || {}, extra || {}, { oid: top, list }));
+  await db.doc('meta/cur').set(Object.assign({}, m0 || {}, extra || {}, { oid: top, list }));
   if (ids.includes(oid)) pickOrder(top);
   return { n, done };
 }
@@ -646,7 +649,7 @@ $('delYes').onclick = async () => {
   try {
     const r = await delOrders([id]), still = !r.done.includes(id);
     if (still) put('warn', 'バックアップを取れなかったので、「' + nm + '」は消していません。電波を確かめて、もう一度押してください。');
-    else put('ok', '「' + nm + '」を消しました。' + (r.n ? '入力 ' + r.n + ' 行はバックアップに残しました（「バックアップ」の「消した発注書」から戻せます）。' : '入力がなかったので、バックアップはありません。'));
+    else put('ok', '「' + nm + '」を消しました。' + (r.n ? '入力 ' + r.n + ' 行はバックアップに残しました（「バックアップ」の「消した発注書」から戻せます）。' : '入力はありませんでした（発注書はバックアップに残したので、「バックアップ」の「消した発注書」から戻せます）。'));
   } catch (e) { put('', '消せませんでした。もう一度押してください。'); }
 };
 // 自動で消す時刻（PC の保存データの「毎日 ◯時にすべて削除」と同じ。PC から送るときに一緒に届く）
