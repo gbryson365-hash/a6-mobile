@@ -135,6 +135,7 @@ textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8
       </div>
       <div class="stask" id="stAsk" hidden><button type="button" data-st="次回納品">次回納品</button><button type="button" data-st="キャンセル">キャンセル</button><button type="button" data-st="欠品">欠品</button><button type="button" class="cx" data-st="">やめる</button></div>
       <div class="confirm" id="wAsk" hidden><span id="wTxt"></span><button type="button" class="btn sub" id="wNo">直す</button><button type="button" class="btn" id="wYes">このまま保存</button></div>
+      <div class="confirm" id="bAsk" hidden><span id="bTxt"></span><button type="button" class="btn sub" id="bNo">直す</button><button type="button" class="btn" id="bYes">このまま入れる</button></div>
       <div class="brow"><div class="boxes" id="boxes"></div><button type="button" class="abtn" id="autoBtn" title="オンにすると、ロック中に箱番が空いている札を呼んだとき、いまの箱番（いちばん大きい箱番、なければ 1）を自動で入れて、重量の欄から始めます">自動箱番</button><button type="button" class="qbtn" id="qtyBtn" title="発注数をそのまま重量（実数）に入れます（保存は「保存」ボタン）">発注数</button></div>
     </div>
     </div>
@@ -282,7 +283,7 @@ function key(k){
     say(''); paint(); return;
   }
   if (k === 'BK') { goBack(); return; }   // 戻る：保存しないで番号の画面へ
-  $('wAsk').hidden = true;
+  $('wAsk').hidden = true; $('bAsk').hidden = true;
   if (k === 'OK' && isLk(curR, 'b') && (isLk(curR, 'w') || isSt(valOf(curR).b))) { goBack(); return; }   // 「戻る」
   if (isLk(curR, fld) && k !== 'OK') { lkMsg(fld); return; }
   if (fld === 'b' && k !== 'OK') { if ((autoB || isSt(bufB)) && /^[\d.]$/.test(k)) bufB = ''; autoB = false; }   // 自動の箱番・出荷なしの文字は、数字を打つと置き換わる   // 自動の箱番は、数字を打つと置き換わる
@@ -320,7 +321,7 @@ $('lockBtn').onclick = () => {
 function open(no){
   const r = rowsOf().find(x => String(x.no) === String(no).replace(/^0+(?=\d)/, ''));
   if (!r) { say(no ? '番号 ' + no + ' はありません。' : '札の番号を入れてください。'); return; }
-  curR = r; mode = 'card'; qtyW = null; $('wAsk').hidden = true; $('stAsk').hidden = true; const v = valOf(r); bufB = v.b; bufW = v.w; fld = v.b === '' ? 'b' : 'w'; numBuf = '';
+  curR = r; mode = 'card'; qtyW = null; $('wAsk').hidden = true; $('bAsk').hidden = true; bOkFor = null; $('stAsk').hidden = true; const v = valOf(r); bufB = v.b; bufW = v.w; fld = v.b === '' ? 'b' : 'w'; numBuf = '';
   if (isLk(r, fld)) fld = fld === 'b' ? 'w' : 'b';
   autoB = false; autoFill(r);
   say(isLk(r, 'b') && isLk(r, 'w') ? 'この行の箱番・重量はロックされています（直すときは右上の鍵を押して外してください）。' : ''); paint(); drawList(); toCall();
@@ -351,7 +352,9 @@ function wCheck(r, w){
       if (n < lo || n > hi) return '重量 ' + w + ' は、規格×発注数（' + f(k.lo * q) + (k.hi !== k.lo ? '～' + f(k.hi * q) : '') + 'kg）から ' + c.pct + '% 以上ずれています。'; } }
   return '';
 }
-// 箱番の確かめ：小数点なしの 1 以上の数字で、使っている箱番か「いまの最後の箱 + 1」まで（連番）。だめなら知らせて消す
+// 箱番の確かめ：小数点なしの 1 以上の数字（だめなら知らせて消す）。連番でない（「いまの最後の箱 + 1」より大きい）ときは、追加注文のこともあるので
+// 注意を出して「このまま入れる」で入れられるようにする（bOkFor：この札・この箱番はOK済み）
+let bOkFor = null;
 function boxOk(r, b){
   b = String(b || '').trim(); if (b === '' || isSt(b)) return true;
   const bad = m => { say(m); bufB = ''; fld = 'b'; paint(); return false; };
@@ -359,7 +362,10 @@ function boxOk(r, b){
   const used = new Set(); let mx = 0;
   rowsOf().forEach(x => { if (x === r) return; const v = valOf(x).b; if (/^\d+$/.test(v)) { used.add(Number(v)); mx = Math.max(mx, Number(v)); } });
   const n = Number(b);
-  if (!used.has(n) && n > mx + 1) return bad('箱番が連番ではありません（' + (mx ? 'いまの最後の箱は ' + mx + '。次は ' + (mx + 1) : 'まだ箱がないので、最初は 1') + ' です）。');
+  if (!used.has(n) && n > mx + 1 && !(bOkFor && bOkFor.r === r && bOkFor.b === b)) {
+    $('bTxt').textContent = '箱番 ' + b + ' は連番ではありません（' + (mx ? 'いまの最後の箱は ' + mx + '。次は ' + (mx + 1) : 'まだ箱がないので、最初は 1') + '）。追加注文なら「このまま入れる」を押してください。';
+    $('bAsk').hidden = false; return false;
+  }
   return true;
 }
 // ----- 自動箱番：オンのとき、ロック中で箱番が空いている札を呼んだら、いまの箱番（なければ 1）を入れて重量の欄から（青い字で「自動」） -----
@@ -376,6 +382,12 @@ $('autoBtn').onclick = () => {
 let wForce = false;
 $('wNo').onclick = () => { $('wAsk').hidden = true; bufW = ''; qtyW = null; fld = 'w'; paint(); };   // 直す：入れた重量は消して、すぐ打ち直せるように
 $('wYes').onclick = () => { $('wAsk').hidden = true; wForce = true; save(); };
+$('bNo').onclick = () => { $('bAsk').hidden = true; bOkFor = null; bufB = ''; autoB = false; fld = 'b'; paint(); };   // 直す：入れた箱番は消して、すぐ打ち直せるように
+$('bYes').onclick = () => {   // 箱番の欄でOKしたとき（まだ重量の前）は重量の欄へ、保存のときはそのまま保存
+  $('bAsk').hidden = true; bOkFor = { r: curR, b: bufB.trim() };
+  if (fld === 'b') { say(''); fld = 'w'; if (bufW.trim() !== '') save(); else paint(); return; }
+  save();
+};
 async function save(){
   const r = curR; if (!r) return;
   const old = valOf(r), nb = isLk(r, 'b') ? old.b : bufB.trim(), nw = isSt(nb) ? '' : isLk(r, 'w') ? old.w : calc(bufW).trim();   // 出荷なしは重量を空に（重量がロックされていても）
@@ -429,7 +441,7 @@ function paint(){
 const qtyNum = r => { const q = r && r.qty != null ? String(r.qty).trim() : ''; return q !== '' && !isNaN(Number(q)) ? String(Number(q)) : ''; };
 $('qtyBtn').onclick = () => { if (!curR) return; if (isLk(curR, 'w')) { lkMsg('w'); return; } const q = qtyNum(curR); if (!q) return; bufW = q; fld = 'w';
   qtyW = q; paint(); say('重量に発注数（' + q + '）を入れました。「保存」で保存します。', true); };   // 保存はしない（保存ボタンで）
-function goBack(){ $('wAsk').hidden = true; $('stAsk').hidden = true; mode = 'num'; curR = null; numBuf = ''; say(''); paint(); drawList(); toCall(); }   // 保存しないで番号の画面へ
+function goBack(){ $('wAsk').hidden = true; $('bAsk').hidden = true; bOkFor = null; $('stAsk').hidden = true; mode = 'num'; curR = null; numBuf = ''; say(''); paint(); drawList(); toCall(); }   // 保存しないで番号の画面へ
 // 箱番の欄を長押し（0.6 秒）：出荷なし（次回納品・キャンセル・欠品）を選ぶ。重量は空にする。保存は「保存」で
 let lpT = null, lpDone = false, lpXY = null;
 const lpStop = () => { if (lpT) { clearTimeout(lpT); lpT = null; } $('fB').classList.remove('lp'); };
