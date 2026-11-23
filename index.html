@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>A6 スマホ入力（新）</title>
+<title>A6 スマホ入力</title>
 <link rel="apple-touch-icon" href="icon.png">
 <meta name="apple-mobile-web-app-title" content="A6入力">
 <script src="supabase.js"></script>
@@ -104,17 +104,18 @@ textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8
 #login h2{font-size:22px;margin:0 0 12px}#login label{display:block;margin:10px 0 4px;color:var(--sub);font-size:14px}
 #login input{width:100%;height:46px;font-size:16px;border:1px solid var(--line);border-radius:6px;padding:0 10px;background:var(--bg)}
 #login button{width:100%;height:48px;margin-top:16px;border:0;border-radius:8px;background:var(--ink);color:var(--bg);font-weight:700;font-size:16px}
+#outBtn2,#pc{display:none!important}   /* 取込用にコピー・PC との受け渡しは使わない（PC のアプリが直接読み書きする） */
 #login .msg{margin-top:10px;min-height:1.5em}.sbout{margin-top:24px;text-align:center}.sbout button{border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:6px 12px;font-size:13px;color:var(--sub)}
 </style>
 </head>
 <body>
-<div id="login" hidden><div class="lg"><h2>A6 スマホ入力（新）</h2><div class="hint">ログインしてください（一度ログインすれば、次からは要りません）。</div>
+<div id="login" hidden><div class="lg"><h2>A6 スマホ入力</h2><div class="hint">ログインしてください（一度ログインすれば、次からは要りません）。</div>
 <label for="lgMail">メールアドレス</label><input id="lgMail" type="email" autocomplete="username" inputmode="email">
 <label for="lgPw">パスワード</label><input id="lgPw" type="password" autocomplete="current-password">
 <button type="button" id="lgGo">ログイン</button><div class="msg" id="lgMsg"></div></div></div>
 <div class="wrap">
   <div class="row osel"><select id="ordSel" aria-label="発注書"></select></div>
-  <header><h1 id="ttl">スマホ入力<small style="font-size:13px;color:var(--sub)">（新）</small></h1><span class="date" id="dt"></span><span class="prog num" id="prog"></span></header>
+  <header><h1 id="ttl">スマホ入力</h1><span class="date" id="dt"></span><span class="prog num" id="prog"></span></header>
   <div class="bar"><i id="barI"></i></div>
   <div class="row trow" style="margin-top:0"><button type="button" class="btn sub" id="outBtn2" title="PC で押します。スマホで入れた箱番・重量をコピーして、アプリの「スマホ入力を取り込む」で取り込みます">取込用にコピー</button><button type="button" class="btn sub" id="delBtn" title="この発注書と、入れた箱番・重量を消します">削除</button><button type="button" class="btn sub" id="bakBtn" title="消した・置き換えた箱番・重量を戻します（3日分）">バックアップ</button></div>
   <div class="bak" id="bakBox" hidden><div class="bkh"><b>バックアップから戻す</b><button type="button" class="btn sub" id="bakClose">閉じる</button></div><div id="bakList"></div></div>
