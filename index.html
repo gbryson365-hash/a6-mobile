@@ -488,7 +488,7 @@ function paint(){
   { const m = $('msg'), to = card ? $('card').querySelector('.fields') : null;   // メッセージの場所：札では箱番・重量の欄の上、番号の画面では番号の下
     if (to) { if (m.nextElementSibling !== to) to.before(m); } else if (m.parentNode !== $('topArea')) $('topArea').appendChild(m); }
   // 計算機の枠の高さを変えない：札を開いたときのいちばん高い高さを覚えて、番号の画面でも同じ高さにする（キーの位置が動かないように）
-  { const ta = $('topArea');
+  if ($('call').offsetParent) { const ta = $('topArea');   // 計算機を隠しているとき（バックアップを開いている間）は測れないので、高さは変えない
     // 画面の高さいっぱいまで枠を伸ばす（入力の画面はこの枠だけ見えればよい。規格が長い・メッセージが多いときの余裕に）
     ta.style.minHeight = ''; const other = $('call').offsetHeight - ta.offsetHeight, avail = window.innerHeight - TOPGAP - 8 - other;
     ta.style.minHeight = Math.max(avail, 0) + 'px'; }   // 札の中身がもっと長いときだけ、その札の間は伸びる
@@ -684,7 +684,7 @@ async function bakRestore(bid){
       await db.doc('meta/cur').set(Object.assign({}, m0 || {}, { oid: id, list: list.slice(0, 50) }));
     } else await bakTake(id, '戻す前');   // 戻す前の今の値も写しておく（戻したのを、また戻せるように）
     await inBatches(b.vals || [], v => db.doc('orders/' + id + '/v/' + v.r).set({ no: v.no || '', b: String(v.b || ''), w: String(v.w || ''), at: Number(v.at) || Date.now() }));
-    $('bakBox').hidden = true; bakMode(false); clrTop(); pickOrder(id); toCall(); say('バックアップ（' + hm(b.at) + '）から ' + (b.vals || []).length + ' 行を戻しました。', true);
+    $('bakBox').hidden = true; bakMode(false); clrTop(); pickOrder(id); paint(); toCall(); say('バックアップ（' + hm(b.at) + '）から ' + (b.vals || []).length + ' 行を戻しました。', true);
   } catch (e) { say('戻せませんでした。もう一度押してください。'); }
 }
 async function delOrder(id, why){   // 発注書と、入れた箱番・重量（v）を消す（消す前にバックアップ。取れなかったら消さない）。戻り値：バックアップした行数
@@ -715,7 +715,7 @@ $('delBtn').onclick = () => {
 };
 // バックアップを開いている間は、計算機から下を隠して、入力もできないようにする（スライドはバックアップの所まで。閉じる・戻すで元に戻る）
 function bakMode(on){ document.body.classList.toggle('bakmode', !!on); snapS = null; snapY0 = null; snapHold = null; }
-const bakHide = () => { $('bakBox').hidden = true; bakMode(false); toCall(); };
+const bakHide = () => { $('bakBox').hidden = true; bakMode(false); paint(); toCall(); };   // 見えるようになってから、計算機の枠の高さを測り直す
 $('bakBtn').onclick = () => { if (!$('bakBox').hidden) { bakHide(); return; } bakShow(); };
 $('bakClose').onclick = bakHide; $('bakClose2').onclick = bakHide;
 $('bakList').addEventListener('click', e => { const b = e.target.closest('button[data-id]'); if (b) bakRestore(b.dataset.id); });
