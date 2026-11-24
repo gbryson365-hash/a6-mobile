@@ -588,6 +588,7 @@ function pickOrder(id, clr){
     $('fSt').querySelectorAll('button').forEach(x => x.classList.toggle('on', x.dataset.v === 'all'));
   }
   if (unsubO) unsubO(); if (unsubV) unsubV(); order = null; vals = {}; oid = id; lockLoad(); mode = 'num'; curR = null; paint(); drawList();
+  if (!$('bakBox').hidden) bakShow(false, false);   // バックアップを開いたまま発注書を切り替えたら、その発注書のバックアップに切り替える
   if (!db || !id) return;
   subOrder(id);
 }
@@ -656,7 +657,8 @@ async function bakShow(all, gn){
   const bs0 = await bakList(), live = new Set((meta && Array.isArray(meta.list) ? meta.list : []).map(x => x.oid));
   const gone = bs0.filter(b => !live.has(b.oid)), other = bs0.filter(b => b.oid !== oid && live.has(b.oid)).length;   // gone：消した発注書の分（選べないので、いつも下に出す）
   const bs = bakAll || !oid ? bs0 : bs0.filter(b => b.oid === oid);
-  const cur = order ? (order.dest || '') + ' ' + (order.date || '') : '';
+  const me = (meta && Array.isArray(meta.list) ? meta.list : []).find(x => x.oid === oid);   // 発注書を切り替えた直後は中身がまだ届いていないので、一覧の名前を使う
+  const cur = order ? (order.dest || '') + ' ' + (order.date || '') : me ? (me.dest || '') + ' ' + (me.date || '') : '';
   const head = (!bakAll && oid ? '<div class="bkn">「' + esc(cur) + '」のバックアップ</div>' : '');
   const row = b => '<div class="bk"><div><b>' + esc(hm(b.at)) + '</b>　' + esc(b.why || '') + '<br>' + esc((b.dest || '') + ' ' + (b.date || '')) + '　' + bakDone(b) + '</div><button type="button" class="btn sub" data-id="' + esc(b.id) + '">戻す</button></div>';
   const goneH = !bakAll && oid && gone.length ? '<button type="button" class="btn sub" id="bakGoneBtn" style="width:100%;margin-top:10px">' + (bakGone ? '消した発注書を隠す' : '消した発注書（' + gone.length + ' 件）') + '</button>' +
