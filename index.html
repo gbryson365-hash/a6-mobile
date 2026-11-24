@@ -29,7 +29,7 @@ header .date{color:var(--sub);flex:1;min-width:0;overflow:hidden;text-overflow:e
 select,input,textarea,button{font:inherit;color:inherit}
 select{height:40px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:0 8px;max-width:100%}
 .call{border:2px solid var(--ink);border-radius:10px;padding:8px 10px;position:relative}
-.lock{position:absolute;top:6px;right:6px;min-width:40px;height:40px;display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:20px;line-height:1;padding:0;z-index:2}.lock svg{width:22px;height:22px}.lock.on{border:2px solid var(--ink);color:var(--ink)}.lock:not(.on){border:2px solid var(--red);background:var(--red);color:#fff}   /* 外しているときは赤地に開いた鍵（文字は出さない：品名の幅を変えないため） */
+.lock{position:absolute;top:6px;right:6px;min-width:40px;height:40px;display:flex;align-items:center;justify-content:center;gap:4px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:20px;line-height:1;padding:0;z-index:2}.lock svg{width:22px;height:22px}.lock.dis{opacity:.35}.lock.on{border:2px solid var(--ink);color:var(--ink)}.lock:not(.on){border:2px solid var(--red);background:var(--red);color:#fff}   /* 外しているときは赤地に開いた鍵（文字は出さない：品名の幅を変えないため） */
 .card .head,.disp{padding-right:44px}.fld.lk{background:var(--soft)}.fld.lk small::after{content:'　🔒'}
 .disp{display:flex;align-items:center;gap:10px}
 .disp .lab{font-size:13px;color:var(--sub);width:4.5em}
@@ -347,20 +347,23 @@ let lockOn = true;
 const LOCK_ON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2" fill="currentColor"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>';
 const LOCK_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 7.6-1.8"/></svg>';   // 掛け金が開いた鍵
 const lockKey = () => 'a6lock:' + oid;
-function lockLoad(){ lockOn = true; try { lockOn = localStorage.getItem(lockKey()) !== 'off'; } catch (e) {} }
-function lockStore(){ try { if (lockOn) localStorage.removeItem(lockKey()); else localStorage.setItem(lockKey(), 'off'); } catch (e) {} }
+// 鍵はいつもかかっている。外せるのは札を呼び出しているときだけで、「保存」か「戻る」で必ずかかり直す（外した状態は覚えない）
+function lockLoad(){ lockOn = true; try { localStorage.removeItem(lockKey()); } catch (e) {} }
+function lockStore(){}
 const isLk = (r, f) => !!(lockOn && r && valOf(r)[f] !== '');   // 空いている欄はロックしない
 const lkMsg = f => say((f === 'b' ? '箱番' : '重量') + 'はロック中（右上の鍵で外せます）。');
 $('lockBtn').onclick = () => {
   if (!order) { say('発注書を選んでください。'); return; }
+  if (mode !== 'card' || !curR) { if (!lockOn) { lockOn = true; paint(); } say('鍵は、札を呼び出してから外せます。'); return; }   // 番号の画面では外さない
   lockOn = !lockOn; lockStore();
-  say(lockOn ? 'ロックしました。' : 'ロックを外しました（保存すると自動でロック）。', lockOn);
+  say(lockOn ? 'ロックしました。' : 'ロックを外しました（保存・戻るでロック）。', lockOn);
   if (mode === 'card' && curR && isLk(curR, fld)) { const o = fld === 'b' ? 'w' : 'b'; if (!isLk(curR, o)) fld = o; }
   paint(); drawList();
 };
 function open(no){
   const r = rowsOf().find(x => String(x.no) === String(no).replace(/^0+(?=\d)/, ''));
   if (!r) { say(no ? '番号 ' + no + ' はありません。' : '札の番号を入れてください。'); return; }
+  lockOn = true;   // 札を呼び出すときは、いつも鍵がかかった状態から
   curR = r; mode = 'card'; qtyW = null; $('wAsk').hidden = true; $('bAsk').hidden = true; bOkFor = null; $('stAsk').hidden = true; const v = valOf(r); bufB = v.b; bufW = v.w; fld = v.b === '' ? 'b' : 'w'; numBuf = '';
   if (isLk(r, fld)) fld = fld === 'b' ? 'w' : 'b';
   autoB = false; autoFill(r);
@@ -492,7 +495,7 @@ function paint(){
   setTimeout(dirtyShow, 0);
   $('autoBtn').classList.toggle('on', autoOn); $('autoBtn').setAttribute('aria-pressed', autoOn ? 'true' : 'false');
   $('keys').classList.toggle('nb', mode !== 'card');   // 「戻る」は札を開いているときだけ
-  $('lockBtn').classList.toggle('on', lockOn); $('lockBtn').innerHTML = lockOn ? LOCK_ON : LOCK_OFF; $('call').classList.toggle('unl', !lockOn); $('lockBtn').setAttribute('aria-pressed', lockOn ? 'true' : 'false');
+  $('lockBtn').classList.toggle('on', lockOn); $('lockBtn').classList.toggle('dis', mode !== 'card'); $('lockBtn').innerHTML = lockOn ? LOCK_ON : LOCK_OFF; $('call').classList.toggle('unl', !lockOn); $('lockBtn').setAttribute('aria-pressed', lockOn ? 'true' : 'false');
   const card = mode === 'card' && curR;
   $('card').classList.toggle('on', !!card); $('numDisp').hidden = !!card;
   { const m = $('msg'), to = card ? $('card').querySelector('.fields') : null;   // メッセージの場所：札では箱番・重量の欄の上、番号の画面では番号の下
@@ -520,7 +523,8 @@ function paint(){
 const qtyNum = r => { const q = r && r.qty != null ? String(r.qty).trim() : ''; return q !== '' && !isNaN(Number(q)) ? String(Number(q)) : ''; };
 $('qtyBtn').onclick = () => { if (!curR) return; if (isLk(curR, 'w')) { lkMsg('w'); return; } const q = qtyNum(curR); if (!q) return; bufW = q; fld = 'w';
   qtyW = q; paint(); say('重量に発注数 ' + q + ' を入れました（保存で確定）。', true); };   // 保存はしない（保存ボタンで）
-function goBack(){ $('wAsk').hidden = true; $('bAsk').hidden = true; bOkFor = null; $('stAsk').hidden = true; mode = 'num'; curR = null; numBuf = ''; say(''); paint(); drawList(); toCall(); }   // 保存しないで番号の画面へ
+function goBack(){ lockOn = true;   // 戻るでも鍵をかけ直す
+  $('wAsk').hidden = true; $('bAsk').hidden = true; bOkFor = null; $('stAsk').hidden = true; mode = 'num'; curR = null; numBuf = ''; say(''); paint(); drawList(); toCall(); }   // 保存しないで番号の画面へ
 // 箱番の欄を長押し（0.6 秒）：出荷なし（次回納品・キャンセル・欠品）を選ぶ。重量は空にする。保存は「保存」で
 let lpT = null, lpDone = false, lpXY = null;
 const lpStop = () => { if (lpT) { clearTimeout(lpT); lpT = null; } $('fB').classList.remove('lp'); };
