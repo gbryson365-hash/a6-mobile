@@ -102,6 +102,7 @@ textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8
 #fSt button{touch-action:manipulation}
 .osel{margin:0 0 8px}.osel select{width:100%;height:52px;font-size:17px}   /* 発注書の選択はいちばん上（押しやすく高めに） */
 .wrap{padding-top:60px}
+body.bakmode #call,body.bakmode #call~*{display:none!important}   /* バックアップを開いている間は、計算機から下を隠す */
 /* スライドは3か所で止まる（①いちばん上 ②計算機 ③一覧の見出し）：JS で行う（snapStops）。一覧より下はふつうに滑る */   /* いちばん上までスライドしても、LINE などの通知用のすき間を空けておく（計算機の TOPGAP と同じ） */
 #login{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px}
 #login .lg{width:100%;max-width:360px;border-top:6px solid var(--ink);padding-top:10px}
@@ -122,7 +123,7 @@ textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8
   <header><h1 id="ttl">スマホ入力</h1><span class="date" id="dt"></span><span class="prog num" id="prog"></span></header>
   <div class="bar"><i id="barI"></i></div>
   <div class="row trow" style="margin-top:0"><button type="button" class="btn sub" id="outBtn2" title="PC で押します。スマホで入れた箱番・重量をコピーして、アプリの「スマホ入力を取り込む」で取り込みます">取込用にコピー</button><button type="button" class="btn sub" id="delBtn" title="この発注書と、入れた箱番・重量を消します">削除</button><button type="button" class="btn sub" id="bakBtn" title="消した・置き換えた箱番・重量を戻します（3日分）">バックアップ</button></div>
-  <div class="bak" id="bakBox" hidden><div class="bkh"><b>バックアップから戻す</b><button type="button" class="btn sub" id="bakClose">閉じる</button></div><div id="bakList"></div></div>
+  <div class="bak" id="bakBox" hidden><div class="bkh"><b>バックアップから戻す</b><button type="button" class="btn sub" id="bakClose">閉じる</button></div><div id="bakList"></div><button type="button" class="btn sub" id="bakClose2" style="width:100%;margin-top:8px">閉じる（入力の画面に戻る）</button></div>
   <div class="confirm" id="delAsk" hidden><span id="delTxt"></span><button type="button" class="btn" id="delYes">削除する</button><button type="button" class="btn sub" id="delNo">やめる</button></div>
   <div class="msg" id="topMsg"></div>
   <textarea id="outBox2" readonly hidden></textarea>
@@ -309,6 +310,7 @@ $('keys').innerHTML = KEYS.map(k => '<button type="button" data-k="' + k + '"' +
 $('keys').addEventListener('click', e => { const b = e.target.closest('button'); if (b) key(b.dataset.k); });
 document.addEventListener('keydown', e => { if (e.target.closest('textarea,select,input')) return; const k = e.key === 'Enter' ? 'OK' : e.key === 'Backspace' ? '⌫' : e.key === 'Escape' ? 'C' : e.key; if (KEYS.includes(k) || k === '⌫') { e.preventDefault(); key(k); } });   // PC のキーボードの Backspace は 1 文字消す
 function key(k){
+  if (document.body.classList.contains('bakmode')) return;   // バックアップを開いている間は入力しない
   if (mode === 'num') {
     if (/^\d$/.test(k)) { if (numBuf.length < 3) numBuf += k; }   // 札の番号は3桁まで
     else if (k === '⌫') numBuf = numBuf.slice(0, -1);
@@ -373,7 +375,7 @@ const TOPGAP = 60;
 //  （スクロールのたびに位置を測ると重くなるので、止まる所は指を置いたときに測っておく）
 const snapStops = () => { const g = el => Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY - TOPGAP)); return [0, g($('call')), g($('listH'))]; };
 let snapY0 = null, snapHold = null, snapS = null, snapTouch = false, snapT = null;
-window.addEventListener('touchstart', () => { snapS = snapStops(); snapY0 = window.scrollY; snapHold = null; snapTouch = true; clearTimeout(snapT); }, { passive: true });
+window.addEventListener('touchstart', () => { if (document.body.classList.contains('bakmode')) { snapS = null; snapY0 = null; snapHold = null; return; } snapS = snapStops(); snapY0 = window.scrollY; snapHold = null; snapTouch = true; clearTimeout(snapT); }, { passive: true });
 window.addEventListener('touchend', () => { snapTouch = false; snapIdle(); }, { passive: true });
 window.addEventListener('touchcancel', () => { snapTouch = false; snapIdle(); }, { passive: true });
 function snapIdle(){ clearTimeout(snapT); snapT = setTimeout(snapSettle, 140); }
@@ -661,7 +663,7 @@ async function bakShow(all){
   $('bakList').innerHTML = head + (bs.length ? bs.map(b => '<div class="bk"><div><b>' + esc(hm(b.at)) + '</b>　' + esc(b.why || '') + '<br>' + esc((b.dest || '') + ' ' + (b.date || '')) + '　' + bakDone(b) + '</div><button type="button" class="btn sub" data-id="' + esc(b.id) + '">戻す</button></div>').join('')
     : '<div class="empty">バックアップはありません（消す・置き換える前に自動で取り、' + BAK_DAYS + '日分残します）。</div>') + goneH + more;
   const mb = $('bakMore'); if (mb) mb.onclick = () => bakShow(!bakAll);
-  $('bakBox').hidden = false;
+  $('bakBox').hidden = false; bakMode(true);
 }
 async function bakRestore(bid){
   const b = (await bakList()).find(x => x.id === bid); if (!b) return;
@@ -677,7 +679,7 @@ async function bakRestore(bid){
       await db.doc('meta/cur').set(Object.assign({}, m0 || {}, { oid: id, list: list.slice(0, 50) }));
     } else await bakTake(id, '戻す前');   // 戻す前の今の値も写しておく（戻したのを、また戻せるように）
     await inBatches(b.vals || [], v => db.doc('orders/' + id + '/v/' + v.r).set({ no: v.no || '', b: String(v.b || ''), w: String(v.w || ''), at: Number(v.at) || Date.now() }));
-    $('bakBox').hidden = true; clrTop(); pickOrder(id); say('バックアップ（' + hm(b.at) + '）から ' + (b.vals || []).length + ' 行を戻しました。', true);
+    $('bakBox').hidden = true; bakMode(false); clrTop(); pickOrder(id); toCall(); say('バックアップ（' + hm(b.at) + '）から ' + (b.vals || []).length + ' 行を戻しました。', true);
   } catch (e) { say('戻せませんでした。もう一度押してください。'); }
 }
 async function delOrder(id, why){   // 発注書と、入れた箱番・重量（v）を消す（消す前にバックアップ。取れなかったら消さない）。戻り値：バックアップした行数
@@ -706,8 +708,11 @@ $('delBtn').onclick = () => {
   $('delTxt').textContent = '「' + (order.dest || '') + ' ' + (order.date || '') + '」と、入れた箱番・重量を消しますか？（' + BAK_DAYS + '日間は「バックアップ」から戻せます）';
   $('delAsk').hidden = false;
 };
-$('bakBtn').onclick = () => { if (!$('bakBox').hidden) { $('bakBox').hidden = true; return; } bakShow(); };
-$('bakClose').onclick = () => { $('bakBox').hidden = true; };
+// バックアップを開いている間は、計算機から下を隠して、入力もできないようにする（スライドはバックアップの所まで。閉じる・戻すで元に戻る）
+function bakMode(on){ document.body.classList.toggle('bakmode', !!on); snapS = null; snapY0 = null; snapHold = null; }
+const bakHide = () => { $('bakBox').hidden = true; bakMode(false); toCall(); };
+$('bakBtn').onclick = () => { if (!$('bakBox').hidden) { bakHide(); return; } bakShow(); };
+$('bakClose').onclick = bakHide; $('bakClose2').onclick = bakHide;
 $('bakList').addEventListener('click', e => { const b = e.target.closest('button[data-id]'); if (b) bakRestore(b.dataset.id); });
 $('delNo').onclick = () => { $('delAsk').hidden = true; };
 $('delYes').onclick = async () => {
