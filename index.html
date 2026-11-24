@@ -57,7 +57,7 @@ select{height:40px;border:1px solid var(--line);border-radius:6px;background:var
 .keys button[data-k="⌫"]{font-size:34px}
 .keys button.go{background:var(--ink);color:var(--bg);font-size:18px;font-weight:700}.keys button.go.dirty{background:var(--red);border-color:var(--red)}.msg.dirty{font-weight:700}
 .stask{display:grid;grid-template-columns:1fr 1.15fr .8fr .8fr;gap:6px;margin-top:6px}.stask button{height:44px;padding:0 2px;border:2px solid var(--ink);border-radius:8px;background:var(--bg);font-size:15px;font-weight:700;white-space:nowrap}.stask button.cx{border-color:var(--line);color:var(--sub);font-weight:400}.fld.lp{background:#fff3c4}   /* 箱番の長押し：出荷なし */
-.call .msg{height:2.7em;line-height:1.35;margin-top:4px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:14px}   /* メッセージはキーのすぐ上に2行分（出ても枠が伸びない） */
+.call .msg{height:2.7em;line-height:1.35;margin-top:6px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;font-size:14px}   /* メッセージはキーのすぐ上に2行分（出ても枠が伸びない） */
 .call .keys{margin-top:4px}
 .keys button:active{transform:scale(.97)}
 .msg{min-height:22px;font-size:14px;color:var(--red);margin-top:6px}
@@ -131,6 +131,7 @@ textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8
     <div class="disp" id="numDisp"><span class="lab">札の番号</span><span class="val num" id="numVal"></span></div>
     <div class="card" id="card">
       <div class="head"><div class="nq"><span class="no num" id="cNo"></span><span class="qty" id="cQty"></span></div><div><div class="sp" id="cShop"></div><div class="it" id="cItem"></div><div class="sp" id="cSpec"></div></div></div>
+      <div class="msg" id="msg"></div>   <!-- メッセージは箱番・重量の欄のすぐ上に、2行まで（番号の画面では番号の下。paint で動かす） -->
       <div class="fields">
         <div class="fld" id="fB" data-f="b"><small>箱番</small><b class="num" id="vB"></b></div>
         <div class="fld" id="fW" data-f="w"><small>重量（実数）</small><b class="num" id="vW"></b></div>
@@ -141,7 +142,6 @@ textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8
       <div class="brow"><div class="boxes" id="boxes"></div><button type="button" class="abtn" id="autoBtn" title="オンにすると、ロック中に箱番が空いている札を呼んだとき、いまの箱番（いちばん大きい箱番、なければ 1）を自動で入れて、重量の欄から始めます">自動箱番</button><button type="button" class="qbtn" id="qtyBtn" title="発注数をそのまま重量（実数）に入れます（保存は「保存」ボタン）">発注数</button></div>
     </div>
     </div>
-    <div class="msg" id="msg"></div>   <!-- メッセージはキー（7・8・9）のすぐ上に、2行まで -->
     <div class="keys" id="keys"></div>
   </div>
 
@@ -453,6 +453,8 @@ function paint(){
   $('lockBtn').classList.toggle('on', lockOn); $('lockBtn').innerHTML = lockOn ? LOCK_ON : LOCK_OFF; $('call').classList.toggle('unl', !lockOn); $('lockBtn').setAttribute('aria-pressed', lockOn ? 'true' : 'false');
   const card = mode === 'card' && curR;
   $('card').classList.toggle('on', !!card); $('numDisp').hidden = !!card;
+  { const m = $('msg'), to = card ? $('card').querySelector('.fields') : null;   // メッセージの場所：札では箱番・重量の欄の上、番号の画面では番号の下
+    if (to) { if (m.nextElementSibling !== to) to.before(m); } else if (m.parentNode !== $('topArea')) $('topArea').appendChild(m); }
   // 計算機の枠の高さを変えない：札を開いたときのいちばん高い高さを覚えて、番号の画面でも同じ高さにする（キーの位置が動かないように）
   { const ta = $('topArea');
     // 画面の高さいっぱいまで枠を伸ばす（入力の画面はこの枠だけ見えればよい。規格が長い・メッセージが多いときの余裕に）
