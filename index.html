@@ -100,6 +100,9 @@ textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8
 .note{font-size:13px;color:var(--sub)}
 @media(prefers-reduced-motion:reduce){.keys button:active{transform:none}}
 #fSt button{touch-action:manipulation}
+.lh{display:flex;align-items:center;justify-content:space-between}.lh button{height:34px;padding:0 12px;border:2px solid var(--ink);border-radius:17px;background:var(--bg);font-size:14px;font-weight:700}.lh button.on{background:var(--ink);color:var(--bg)}
+/* 詰めて表示：1行を1段に（規格・店名は隠す。品名が長いときは「…」）。空欄を一目で見渡せるように */
+#lt.cmp td .s{display:none}#lt.cmp td{padding:4px 3px;vertical-align:middle}#lt.cmp td:nth-child(2){max-width:0;width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lt.cmp td.n{font-size:16px}#lt.cmp th{white-space:nowrap}
 .osel{margin:0 0 8px}.osel select{width:100%;height:52px;font-size:17px}   /* 発注書の選択はいちばん上（押しやすく高めに） */
 .wrap{padding-top:60px}
 body.bakmode #call,body.bakmode #call~*{display:none!important}   /* バックアップを開いている間は、計算機から下を隠す */
@@ -148,7 +151,7 @@ body.bakmode #call,body.bakmode #call~*{display:none!important}   /* バック�
     <div class="keys" id="keys"></div>
   </div>
 
-  <h2 id="listH">一覧</h2>
+  <h2 id="listH" class="lh">一覧<button type="button" id="cmpBtn" aria-pressed="false">詰めて表示</button></h2>
   <div class="filters">
     <div class="seg" id="fSt"><button data-v="all" class="on">すべて</button><button data-v="blank">未入力</button></div>
     <select id="fItem" aria-label="品名で絞り込み"><option value="">品名：すべて</option></select>
@@ -157,7 +160,7 @@ body.bakmode #call,body.bakmode #call~*{display:none!important}   /* バック�
   <div class="seg boxf" id="fBox" aria-label="箱番で絞り込み"></div>
   <div class="boxinfo" id="boxInfo" hidden></div>
   <div class="donemsg" id="doneMsg" hidden></div>
-  <table><thead><tr><th>No</th><th>品名・規格・店</th><th style="text-align:right">数量</th><th style="text-align:right">箱</th><th style="text-align:right">重量</th></tr></thead><tbody id="tb"></tbody></table>
+  <table id="lt"><thead><tr><th>No</th><th id="ltH">品名・規格・店</th><th style="text-align:right">数量</th><th style="text-align:right">箱</th><th style="text-align:right">重量</th></tr></thead><tbody id="tb"></tbody></table>
   <div class="empty" id="emp" hidden>この絞り込みに入る行はありません。</div>
 
   <h2>箱ごと</h2>
@@ -589,6 +592,11 @@ function drawList(){
 }
 
 // ----- データ（Claude のページの保存） -----
+// 一覧の「詰めて表示」（オン・オフはスマホに覚える）
+let cmpOn = false; try { cmpOn = localStorage.getItem('a6cmp') === '1'; } catch (e) {}
+function cmpPaint(){ $('lt').classList.toggle('cmp', cmpOn); $('cmpBtn').classList.toggle('on', cmpOn); $('cmpBtn').setAttribute('aria-pressed', cmpOn ? 'true' : 'false'); $('ltH').textContent = cmpOn ? '品名' : '品名・規格・店'; }
+$('cmpBtn').onclick = () => { cmpOn = !cmpOn; try { localStorage.setItem('a6cmp', cmpOn ? '1' : '0'); } catch (e) {} cmpPaint(); };
+cmpPaint();
 function pickOrder(id, clr){
   if (id !== oid || clr) {   // 別の発注書に切り替えたとき・PC から受け取ったときは、絞り込みを全部はずす
     stF = 'all'; itemF = ''; kbF = '*'; boxF = '*'; $('fItem').value = '';
