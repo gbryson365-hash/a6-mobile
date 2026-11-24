@@ -390,11 +390,18 @@ function snapSettle(){   // 止まったあと：一覧より上で、止まる�
   else to = [...S].reverse().find(v => v < y) ?? 0;   // 上へ：その上の止まる所
   snapHold = null; window.scrollTo({ top: to, behavior: 'smooth' }); snapY0 = to;
 }
+// 止まる所で止める。iPhone は指を離したあとの勢い（慣性）の間は scrollTo が効かないことがあるので、
+// いったんスクロールを止めて（overflow:hidden）勢いを消してから、止まる所へ動かす
+function snapStopAt(st){
+  snapHold = st; const de = document.documentElement;
+  de.style.overflow = 'hidden'; window.scrollTo(0, st);
+  setTimeout(() => { de.style.overflow = ''; window.scrollTo(0, st); }, 80);
+}
 window.addEventListener('scroll', () => {
   if (snapHold !== null) { if (Math.abs(window.scrollY - snapHold) > 2) window.scrollTo(0, snapHold); return; }
   if (snapY0 === null || !snapS) return;
   const y = window.scrollY;
-  for (const st of snapS) if ((snapY0 < st - 4 && y > st + 4) || (snapY0 > st + 4 && y < st - 4)) { snapHold = st; window.scrollTo(0, st); return; }
+  for (const st of snapS) if ((snapY0 < st - 4 && y > st + 4) || (snapY0 > st + 4 && y < st - 4)) { snapStopAt(st); return; }
   if (!snapTouch) snapIdle();
 }, { passive: true });
 function toCall(){ snapHold = null; snapY0 = null; const go = () => { const el = $('call'); const y = el.getBoundingClientRect().top + window.scrollY - TOPGAP; window.scrollTo({ top: Math.max(0, y), behavior: 'instant' }); }; go(); requestAnimationFrame(() => { go(); setTimeout(go, 60); }); }
