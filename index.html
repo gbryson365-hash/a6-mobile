@@ -101,7 +101,12 @@ textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8
 @media(prefers-reduced-motion:reduce){.keys button:active{transform:none}}
 #fSt button{touch-action:manipulation}
 .osel{margin:0 0 8px}.osel select{width:100%;height:52px;font-size:17px}   /* 発注書の選択はいちばん上（押しやすく高めに） */
-.wrap{padding-top:60px}   /* いちばん上までスライドしても、LINE などの通知用のすき間を空けておく（計算機の TOPGAP と同じ） */
+.wrap{padding-top:60px}
+/* スライドは3か所で止まる：①いちばん上（発注書の選択）②計算機 ③一覧の見出し（どれも上に通知用の 60px を空ける）。勢いよくスライドしても飛ばさない（scroll-snap-stop:always）。
+   一覧より下は1行ずつ（行の頭で止まる）。いちばん下にも止まる所を置いて、最後まで見られるように */
+html{scroll-snap-type:y mandatory;scroll-padding-top:60px}
+.osel,#call,#listH{scroll-snap-align:start;scroll-snap-stop:always}
+#tb td:first-child,h2:not(#listH),.sum>div,details,#endSnap{scroll-snap-align:start}#endSnap{height:1px;scroll-snap-align:end}   /* いちばん上までスライドしても、LINE などの通知用のすき間を空けておく（計算機の TOPGAP と同じ） */
 #login{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px}
 #login .lg{width:100%;max-width:360px;border-top:6px solid var(--ink);padding-top:10px}
 #login h2{font-size:22px;margin:0 0 12px}#login label{display:block;margin:10px 0 4px;color:var(--sub);font-size:14px}
@@ -146,7 +151,7 @@ textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8
     <div class="keys" id="keys"></div>
   </div>
 
-  <h2>一覧</h2>
+  <h2 id="listH">一覧</h2>
   <div class="filters">
     <div class="seg" id="fSt"><button data-v="all" class="on">すべて</button><button data-v="blank">未入力</button></div>
     <select id="fItem" aria-label="品名で絞り込み"><option value="">品名：すべて</option></select>
@@ -174,6 +179,7 @@ textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8
     <div class="row"><button class="btn" id="outBtn">取込用にコピー</button><span class="msg" id="outMsg" style="margin:0"></span></div>
     <textarea id="outBox" readonly hidden></textarea>
   </details>
+  <div id="endSnap"></div>
 </div>
 <script>
 /* Supabase 版スマホ入力：データの置き場所（Claude のページの db と同じ使い方ができるようにする）
@@ -366,7 +372,18 @@ $('call').addEventListener('click', () => { const t = $('call').getBoundingClien
 window.addEventListener('resize', () => paint());
 // 計算機の枠の上は、LINE などの通知が出ても隠れないように、いつも TOPGAP だけ空けておく
 const TOPGAP = 60;
-function toCall(){ const go = () => { const el = $('call'); const y = el.getBoundingClientRect().top + window.scrollY - TOPGAP; window.scrollTo({ top: Math.max(0, y), behavior: 'instant' }); }; go(); requestAnimationFrame(() => { go(); setTimeout(go, 60); }); }
+// スライドの止まる所（①いちばん上 ②計算機 ③一覧の見出し）を、勢いよくスライドしても飛ばさないように見張る（CSS の scroll-snap の念のため）。
+//  指を置いたときの位置から、止まる所を越えたら、そこで止める（指を離したあとの勢いも、次に指を置くまでは止めておく）
+const snapStops = () => { const g = el => Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY - TOPGAP)); return [0, g($('call')), g($('listH'))]; };
+let snapY0 = null, snapHold = null;
+window.addEventListener('touchstart', () => { snapY0 = window.scrollY; snapHold = null; }, { passive: true });
+window.addEventListener('scroll', () => {
+  if (snapHold !== null) { if (Math.abs(window.scrollY - snapHold) > 2) window.scrollTo(0, snapHold); return; }
+  if (snapY0 === null) return;
+  const y = window.scrollY;
+  for (const st of snapStops()) if ((snapY0 < st - 4 && y > st + 4) || (snapY0 > st + 4 && y < st - 4)) { snapHold = st; window.scrollTo(0, st); return; }
+}, { passive: true });
+function toCall(){ snapHold = null; snapY0 = null; const go = () => { const el = $('call'); const y = el.getBoundingClientRect().top + window.scrollY - TOPGAP; window.scrollTo({ top: Math.max(0, y), behavior: 'instant' }); }; go(); requestAnimationFrame(() => { go(); setTimeout(go, 60); }); }
 // ----- 重量の確認（打ち間違い）：PC の「設定」で、取引先・区分ごとに「上限 kg」「規格×発注数との差 ±%」 -----
 //  発注数ボタンで入れた重量、前から入っていて変えていない重量は確かめない
 let qtyW = null;   // 発注数ボタンで入れた値
