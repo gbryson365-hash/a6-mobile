@@ -642,7 +642,7 @@ async function bakPrune(){ try { const lim = Date.now() - BAK_DAYS * 864e5; cons
 async function bakList(){ try { return (await db.collection('baks').get()).docs.map(d => Object.assign({ id: d.id }, d.data() || {})).filter(b => Number(b.at) > Date.now() - BAK_DAYS * 864e5).sort((a, b) => b.at - a.at); } catch (e) { return []; } }
 const hm = t => { const d = new Date(t); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
 // いま開いている発注書のバックアップだけを出す。ほかの発注書（消した発注書を含む）は「ほかの発注書も表示」で出す
-let bakAll = false;
+let bakAll = false, bakGone = false;   // bakGone：消した発注書のバックアップを出す（ふだんは隠して、ボタンで出す）
 // バックアップの入力のようす：「入力 37行中 37行」（全部入っていれば緑、まだのときは黄色）。箱番が文字（次回納品など）の行も入力済に数える
 function bakDone(b){
   const tot = b.order && Array.isArray(b.order.rows) ? b.order.rows.length : 0;
@@ -650,7 +650,8 @@ function bakDone(b){
   if (!tot) return '入力 ' + n + '行';
   return '<span class="bkd' + (n >= tot ? ' ok' : '') + '">入力 ' + tot + '行中 ' + n + '行' + (n >= tot ? '（完了）' : '') + '</span>';
 }
-async function bakShow(all){
+async function bakShow(all, gn){
+  bakGone = !!gn;
   bakAll = !!all;
   const bs0 = await bakList(), live = new Set((meta && Array.isArray(meta.list) ? meta.list : []).map(x => x.oid));
   const gone = bs0.filter(b => !live.has(b.oid)), other = bs0.filter(b => b.oid !== oid && live.has(b.oid)).length;   // gone：消した発注書の分（選べないので、いつも下に出す）
@@ -658,11 +659,13 @@ async function bakShow(all){
   const cur = order ? (order.dest || '') + ' ' + (order.date || '') : '';
   const head = (!bakAll && oid ? '<div class="bkn">「' + esc(cur) + '」のバックアップ</div>' : '');
   const row = b => '<div class="bk"><div><b>' + esc(hm(b.at)) + '</b>　' + esc(b.why || '') + '<br>' + esc((b.dest || '') + ' ' + (b.date || '')) + '　' + bakDone(b) + '</div><button type="button" class="btn sub" data-id="' + esc(b.id) + '">戻す</button></div>';
-  const goneH = !bakAll && oid && gone.length ? '<div class="bkn" style="margin-top:10px">消した発注書のバックアップ</div>' + gone.map(row).join('') : '';
+  const goneH = !bakAll && oid && gone.length ? '<button type="button" class="btn sub" id="bakGoneBtn" style="width:100%;margin-top:10px">' + (bakGone ? '消した発注書を隠す' : '消した発注書（' + gone.length + ' 件）') + '</button>' +
+    (bakGone ? '<div class="bkn" style="margin-top:10px">消した発注書のバックアップ</div>' + gone.map(row).join('') : '') : '';
   const more = oid && other ? '<button type="button" class="btn sub" id="bakMore" style="width:100%;margin-top:6px">' + (bakAll ? 'いまの発注書だけ表示' : 'ほかの発注書も表示（' + other + ' 件）') + '</button>' : '';
   $('bakList').innerHTML = head + (bs.length ? bs.map(b => '<div class="bk"><div><b>' + esc(hm(b.at)) + '</b>　' + esc(b.why || '') + '<br>' + esc((b.dest || '') + ' ' + (b.date || '')) + '　' + bakDone(b) + '</div><button type="button" class="btn sub" data-id="' + esc(b.id) + '">戻す</button></div>').join('')
     : '<div class="empty">バックアップはありません（消す・置き換える前に自動で取り、' + BAK_DAYS + '日分残します）。</div>') + goneH + more;
-  const mb = $('bakMore'); if (mb) mb.onclick = () => bakShow(!bakAll);
+  const mb = $('bakMore'); if (mb) mb.onclick = () => bakShow(!bakAll, false);
+  const gb = $('bakGoneBtn'); if (gb) gb.onclick = () => bakShow(false, !bakGone);
   $('bakBox').hidden = false; bakMode(true);
 }
 async function bakRestore(bid){
