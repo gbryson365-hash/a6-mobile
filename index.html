@@ -593,9 +593,9 @@ function drawList(){
 
 // ----- データ（Claude のページの保存） -----
 // 一覧の「詰めて表示」（オン・オフはスマホに覚える）
-let cmpOn = false; try { cmpOn = localStorage.getItem('a6cmp') === '1'; } catch (e) {}
+let cmpOn = true; try { cmpOn = localStorage.getItem('a6cmpOff') !== '1'; } catch (e) {}   // はじめは「詰めて表示」。オフにしたときだけ覚える
 function cmpPaint(){ $('lt').classList.toggle('cmp', cmpOn); $('cmpBtn').classList.toggle('on', cmpOn); $('cmpBtn').setAttribute('aria-pressed', cmpOn ? 'true' : 'false'); $('ltH').textContent = cmpOn ? '品名' : '品名・規格・店'; }
-$('cmpBtn').onclick = () => { cmpOn = !cmpOn; try { localStorage.setItem('a6cmp', cmpOn ? '1' : '0'); } catch (e) {} cmpPaint(); };
+$('cmpBtn').onclick = () => { cmpOn = !cmpOn; try { cmpOn ? localStorage.removeItem('a6cmpOff') : localStorage.setItem('a6cmpOff', '1'); } catch (e) {} cmpPaint(); };
 cmpPaint();
 function pickOrder(id, clr){
   if (id !== oid || clr) {   // 別の発注書に切り替えたとき・PC から受け取ったときは、絞り込みを全部はずす
