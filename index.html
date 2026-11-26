@@ -370,8 +370,13 @@ function open(no){
   say(isLk(r, 'b') && isLk(r, 'w') ? 'この行はロック中（右上の鍵で外せます）。' : ''); paint(); drawList(); toCall();
 }
 // 計算機の枠の上辺を、画面のいちばん上に合わせる（すぐに。描き終わってからもう一度合わせて、ずれないように）
-// 計算機の枠の中（数字・欄・ボタン）を押したら、ずれていれば枠を定位置（画面の上）に戻す
-$('call').addEventListener('click', () => { const t = $('call').getBoundingClientRect().top; if (Math.abs(t - 4) > 3) toCall(); }, true);
+// 計算機の枠の中（数字・欄・ボタン）を押したとき、枠が定位置（画面の上）からずれていたら、枠を定位置に戻すだけにする
+//  （その押した数字・ボタンは効かせない。スライド中に枠を合わせるつもりで押すことが多いので、数字が入るとクリアが要るため）
+$('call').addEventListener('click', e => {
+  const el = $('call'), max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  const to = Math.min(max, Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY - TOPGAP)));   // 動かせる所（いちばん下までしか動かない）
+  if (Math.abs(window.scrollY - to) > 3) { e.stopPropagation(); e.preventDefault(); toCall(); }
+}, true);
 window.addEventListener('resize', () => paint());
 // 計算機の枠の上は、LINE などの通知が出ても隠れないように、いつも TOPGAP だけ空けておく
 const TOPGAP = 60;
