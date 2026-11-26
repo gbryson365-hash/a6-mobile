@@ -324,7 +324,9 @@ function key(k){
   }
   if (k === 'BK') { goBack(); return; }   // 戻る：保存しないで番号の画面へ
   $('wAsk').hidden = true; $('bAsk').hidden = true;
-  if (k === 'OK' && isLk(curR, 'b') && (isLk(curR, 'w') || isSt(valOf(curR).b))) { goBack(); return; }   // 「戻る」
+  const allLk = isLk(curR, 'b') && (isLk(curR, 'w') || isSt(valOf(curR).b));   // 箱番も重量もロック（直せない札：確かめるために呼んだ札）
+  if (k === 'OK' && allLk) { goBack(); return; }   // 「戻る」
+  if (allLk && /^\d$/.test(k)) { goBack(); key(k); return; }   // 数字を打ったら、そのまま次の札の番号を打ち始める（「戻る」を押さなくてよい）
   if (isLk(curR, fld) && k !== 'OK') { lkMsg(fld); return; }
   if (fld === 'b' && k !== 'OK') { if ((autoB || isSt(bufB)) && /^[\d.]$/.test(k)) bufB = ''; autoB = false; }   // 自動の箱番・出荷なしの文字は、数字を打つと置き換わる   // 自動の箱番は、数字を打つと置き換わる
   let b = fld === 'b' ? bufB : bufW;
