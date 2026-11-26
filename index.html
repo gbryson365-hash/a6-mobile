@@ -107,6 +107,7 @@ textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8
 .wrap{padding-top:0}
 .toprow{height:56px;margin:0 0 4px;gap:6px;flex-wrap:nowrap;align-items:center}.toprow select{flex:1;min-width:0;width:auto;height:48px;font-size:16px}.toprow .btn{height:48px;padding:0 10px;font-size:14px;white-space:nowrap;flex:none}   /* いちばん上の1行：発注書の選択・バックアップ・削除（56px＋4px＝計算機の上の TOPGAP。通知と重なってもよい） */
 header{margin-top:12px}
+html,body{overscroll-behavior-y:none}   /* いちばん上（下）までスライドしたとき、iPhone の「びよーん」と伸びて戻る動きをなくして、ピタッと止める */
 #topMsg:empty{display:none}#listH{margin-top:12px}   /* お知らせがないときは場所を取らない（発注書の名前と一覧をくっつける） */
 body.bakmode #call,body.bakmode #call~*{display:none!important}   /* バックアップを開いている間は、計算機から下を隠す */
 /* スライドは2か所で止まる（①いちばん上 ②計算機）：JS で行う（snapStops）。計算機より下はふつうに滑る */   /* いちばん上までスライドしても、LINE などの通知用のすき間を空けておく（計算機の TOPGAP と同じ） */
