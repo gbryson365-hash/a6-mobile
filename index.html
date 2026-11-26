@@ -50,7 +50,7 @@ select{height:40px;border:1px solid var(--line);border-radius:6px;background:var
 .fld b{display:block;font-size:28px;line-height:32px;height:32px;white-space:nowrap;overflow:hidden}
 .fld.on{border:3px solid var(--red);padding:4px 8px}
 .boxes{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.boxes{align-items:center}.boxes .lbl{font-size:13px;color:var(--sub)}.boxes button{min-width:56px;height:36px;border:2px solid var(--ink);border-radius:18px;background:var(--bg);font-size:20px;font-weight:700}.boxes button.ro{cursor:default}
+.boxes{align-items:center}.boxes .bcnt{font-size:14px;color:var(--sub);font-weight:700;min-width:3.2em;white-space:nowrap}.boxes .lbl{font-size:13px;color:var(--sub)}.boxes button{min-width:56px;height:36px;border:2px solid var(--ink);border-radius:18px;background:var(--bg);font-size:20px;font-weight:700}.boxes button.ro{cursor:default}
 .keys{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:8px}.keys button[data-k="C"]{grid-row:span 2;height:auto}.keys button[data-k="."]{grid-column:span 2;font-size:34px;font-weight:700}.keys button[data-k="BK"]{font-size:20px;font-weight:700}.keys button[data-k="C"]{font-size:28px;font-weight:700}.keys.nb button[data-k="BK"]{opacity:.35}
 .keys button{height:56px;border:1px solid var(--line);border-radius:8px;background:var(--key);font-size:24px}
 .call,.call *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation}   /* 計算機は押したかどうかだけ（長押しで文字を選ばない） */
@@ -489,6 +489,7 @@ async function save(){
   if (re) say($('msg').textContent + re, true);
   mode = 'num'; curR = null; numBuf = ''; paint(); drawList(); toCall();   // 保存したら、枠を定位置（画面の上）に
 }
+function boxCount(b){ const n = Number(b); let c = 0; rowsOf().forEach(r => { const v = valOf(r).b; if (v && !isSt(v) && (String(v) === String(b) || (!isNaN(n) && Number(v) === n))) c++; }); return c; }   // その箱番の行の数（＝品数）
 function lastBox(){   // 入っている箱番のうち、いちばん大きい番号（いま作っている箱）
   let mx = '';
   rowsOf().forEach(r => { const b = valOf(r).b; if (!b || isSt(b)) return;   // 文字の箱番（欠品など）は箱ではない
@@ -521,7 +522,7 @@ function paint(){
     $('fB').classList.toggle('lk', isLk(r, 'b')); $('fW').classList.toggle('lk', isLk(r, 'w'));
     $('qtyBtn').hidden = !qtyNum(r);
     const lb = lastBox();   // いちばん最後に入れた箱番だけを出す（重量のときも）
-    $('boxes').innerHTML = lb ? '<span class="lbl">箱番</span><button type="button" data-b="' + esc(lb) + '"' + (fld === 'b' ? '' : ' class="ro"') + '>' + esc(lb) + '</button>' : '';
+    $('boxes').innerHTML = lb ? '<span class="lbl">箱番</span><button type="button" data-b="' + esc(lb) + '"' + (fld === 'b' ? '' : ' class="ro"') + '>' + esc(lb) + '</button><span class="bcnt">' + boxCount(lb) + '品</span>' : '';   // その箱にいま入っている品数（空の箱をセットしたか、続きかを見分ける）
   }
 }
 // 発注数：発注数をそのまま重量（実数）に入れるだけ（保存は「保存」ボタン）
