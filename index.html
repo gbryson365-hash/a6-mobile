@@ -106,7 +106,7 @@ textarea{width:100%;min-height:90px;border:1px solid var(--line);border-radius:8
 .osel{margin:0 0 8px}.osel select{width:100%;height:52px;font-size:17px}   /* 発注書の選択はいちばん上（押しやすく高めに） */
 .wrap{padding-top:60px}
 body.bakmode #call,body.bakmode #call~*{display:none!important}   /* バックアップを開いている間は、計算機から下を隠す */
-/* スライドは3か所で止まる（①いちばん上 ②計算機 ③一覧の見出し）：JS で行う（snapStops）。一覧より下はふつうに滑る */   /* いちばん上までスライドしても、LINE などの通知用のすき間を空けておく（計算機の TOPGAP と同じ） */
+/* スライドは2か所で止まる（①いちばん上 ②計算機）：JS で行う（snapStops）。計算機より下はふつうに滑る */   /* いちばん上までスライドしても、LINE などの通知用のすき間を空けておく（計算機の TOPGAP と同じ） */
 #login{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px}
 #login .lg{width:100%;max-width:360px;border-top:6px solid var(--ink);padding-top:10px}
 #login h2{font-size:22px;margin:0 0 12px}#login label{display:block;margin:10px 0 4px;color:var(--sub);font-size:14px}
@@ -375,19 +375,19 @@ $('call').addEventListener('click', () => { const t = $('call').getBoundingClien
 window.addEventListener('resize', () => paint());
 // 計算機の枠の上は、LINE などの通知が出ても隠れないように、いつも TOPGAP だけ空けておく
 const TOPGAP = 60;
-// スライドの止まる所（①いちばん上 ②計算機 ③一覧の見出し。どれも上に TOPGAP）。一覧より下は自由にスライドする
+// スライドの止まる所（①いちばん上 ②計算機。どちらも上に TOPGAP）。計算機より下（一覧）は自由にスライドする
 //  ・勢いよくスライドしても、止まる所を越えたら、そこで止める（次に指を置くまで）
-//  ・一覧より上で、止まる所の間で止まったら、動かした向きの次の止まる所まで動かす（少しだけ動かしたときは元に戻す）
+//  ・計算機より上で、止まる所の間で止まったら、動かした向きの次の止まる所まで動かす（少しだけ動かしたときは元に戻す）
 //  （スクロールのたびに位置を測ると重くなるので、止まる所は指を置いたときに測っておく）
-const snapStops = () => { const g = el => Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY - TOPGAP)); return [0, g($('call')), g($('listH'))]; };
+const snapStops = () => { const g = el => Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY - TOPGAP)); return [0, g($('call'))]; };   // 一覧の見出しでは止めない（2026/11/26 ユーザー：挙動が悪く感じる）
 let snapY0 = null, snapHold = null, snapS = null, snapTouch = false, snapT = null;
 window.addEventListener('touchstart', () => { if (document.body.classList.contains('bakmode')) { snapS = null; snapY0 = null; snapHold = null; return; } snapS = snapStops(); snapY0 = window.scrollY; snapHold = null; snapTouch = true; clearTimeout(snapT); }, { passive: true });
 window.addEventListener('touchend', () => { snapTouch = false; snapIdle(); }, { passive: true });
 window.addEventListener('touchcancel', () => { snapTouch = false; snapIdle(); }, { passive: true });
 function snapIdle(){ clearTimeout(snapT); snapT = setTimeout(snapSettle, 140); }
-function snapSettle(){   // 止まったあと：一覧より上で、止まる所の間なら、次の止まる所へ
+function snapSettle(){   // 止まったあと：計算機より上で、止まる所の間なら、次の止まる所へ
   if (snapTouch || !snapS || snapY0 === null) return;
-  const y = window.scrollY, S = snapS, L = S[2];
+  const y = window.scrollY, S = snapS, L = S[S.length - 1];
   if (y >= L - 2 || S.some(v => Math.abs(y - v) <= 2)) return;
   const near = S.reduce((a, v) => Math.abs(v - snapY0) < Math.abs(a - snapY0) ? v : a, S[0]);
   let to;
