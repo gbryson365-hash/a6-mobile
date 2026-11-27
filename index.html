@@ -556,9 +556,9 @@ $('fW').onclick = () => { if (isLk(curR, 'w')) { lkMsg('w'); return; } fld = 'w'
 $('boxes').addEventListener('click', e => { const b = e.target.closest('button'); if (!b || fld !== 'b') return; if (isLk(curR, 'b')) { lkMsg('b'); return; } bufB = b.dataset.b; autoB = false; fld = 'w'; paint(); });   // 箱番に入れるだけ（保存は「保存」ボタン）
 
 // ----- 一覧・絞り込み -----
-let allTap = 0;   // 「すべて」を2回続けて押したら、品名・箱も含めて絞り込みを全部はずす
+// 「すべて」を押したら、品名・区分・箱も含めて絞り込みを全部はずす（2026-11-28 から1回で。前は2回続けて押す）
 $('fSt').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; stF = b.dataset.v; $('fSt').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
-  if (stF === 'all') { const now = Date.now(); if (now - allTap < 500) { itemF = ''; $('fItem').value = ''; kbF = '*'; boxF = '*'; allTap = 0; } else allTap = now; } else allTap = 0;
+  if (stF === 'all') { itemF = ''; $('fItem').value = ''; kbF = '*'; boxF = '*'; }
   drawList(); });
 $('fItem').onchange = () => { itemF = $('fItem').value; drawList(); };
 $('fKb').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; kbF = b.dataset.v; drawList(); });   // 区分：'*'＝すべて、''＝区分なし
